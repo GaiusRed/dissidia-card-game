@@ -100,3 +100,16 @@ test('drags a playable Forward from the fan into the battlefield at both desktop
   expect(hand && dock && hand.y + hand.height).toBeLessThanOrEqual(dock!.y + 2);
   expect(errors).toEqual([]);
 });
+
+test('shows the real Commander beside the fan with a Commander Zone badge', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#match-seed').fill('2');
+  await page.getByRole('button', { name: 'New match' }).click();
+  await page.getByRole('button', { name: 'Take first turn' }).click();
+  await page.getByRole('button', { name: 'Keep', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep', exact: true }).click();
+  const tray = page.getByLabel('Playable cards from other zones');
+  await expect(tray.locator('.other-zone-badge')).toHaveText('COMMANDER ZONE');
+  await expect(tray.locator('.card')).toHaveCount(1);
+  await expect(tray.locator('.card')).toContainText(/Cinder Marshal|Tide Warden/);
+});

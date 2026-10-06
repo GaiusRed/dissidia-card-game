@@ -10,6 +10,7 @@ import { answerChoice } from './setup';
 import { moveCard } from './zones';
 import { continueDamageEx } from './damage';
 import type { Command, EngineContext, MatchState, RuleError, RuleEvent, Transition } from './types';
+export { describeCastAccess, legalActions } from './actions';
 
 function copyState(state: MatchState): MatchState {
   return JSON.parse(JSON.stringify(state)) as MatchState;
