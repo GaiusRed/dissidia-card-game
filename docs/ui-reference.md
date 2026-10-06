@@ -21,6 +21,7 @@ This review records the current desktop presentation against the interaction dir
 - Browser tests exercise the bottom-left choice placement at both supported desktop sizes.
 - Browser tests drag a playable card from the bottom hand fan at 1280×720 and reflow to 1920×1080.
 - Browser tests exercise the visible match controls, deck editor, reload recovery, and offline reload.
+- Local board screenshots were inspected at 1280×720 and 1920×1080 after adding the Commander extension. The fan, extension, and footer remain reachable; the Commander badge is visible beside the hand. This is a layout check, not a comparison against captured Arena screens.
 - Automated tests do not verify visual similarity to Magic: The Gathering Arena. A human screenshot comparison and an unscripted complete duel remain open release checks.
 
 ## Known interaction gaps
