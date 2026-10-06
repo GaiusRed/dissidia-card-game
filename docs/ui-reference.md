@@ -8,7 +8,7 @@ This review records the current desktop presentation against the interaction dir
 |---|---|---|---|
 | Table | Opposing seat above, own seat below, battlefield between | Phaser playmat with both seats and an accessible HTML battlefield | Partial |
 | Hand | Bottom-center fan with playable cards emphasized | Fan at bottom; playable cards glow and can be clicked or dragged | Implemented for tested Character casting |
-| Other playable zones | Same card interaction model with source zone visible | Commander is a playable card beside the hand; Break Zone targets appear in a labeled tray for recovery abilities | Partial; only Commander and two Break Zone abilities use the extension |
+| Other playable zones | Same card interaction model with source zone visible | Commander is a playable card beside the hand; its badge and tax-inclusive cost follow its actual rules object; Break Zone targets appear in a labeled tray for recovery abilities | Partial; only Commander and two Break Zone abilities use the extension |
 | Targeting | Select a source, highlight legal targets, show a source-to-target arrow | Target draft highlights targets and draws a dashed arrow | Partial; supported Summons only |
 | Choices | Contextual buttons near the bottom-left | Choice dock is anchored at bottom-left and checked at 1280×720 and 1920×1080 | Implemented for current prompts |
 | Combat | Clear attack and block assignment | Attack and block controls expose the current Forward and defender options | Partial; single attacker and blocker only |

@@ -31,6 +31,7 @@ Rule references point to [FFTCG Comprehensive Rules v3.3](fftcg-comprules-v3.3.p
 | Effects | Power changes, keyword additions, control expiry, field power bonus | `tests/rules/combat.test.ts` | Partial; complete rule processes and layers remain |
 | Offline | Cache install, offline reload, continued match | `tests/e2e/smoke.spec.ts` | Partial; build-update lifecycle and full offline duel remain |
 | Arena interaction | Hand fan, playable card glow, click/drag casting, targets and arrows, bottom-left choice dock | `tests/e2e/smoke.spec.ts` | Partial; every decision path and overflow acceptance remain |
+| Action availability | Read-only cast legality, CP sufficiency, target presence, Commander tax, opposing-turn Summon windows, host action projection, and Commander tray | `tests/rules/actions.test.ts`, `tests/host/card-tray.test.ts`, `tests/host/views.test.ts` | Partial; activated abilities and complete payment combinations are not all offered yet |
 
 ## Pending milestone 2 scenarios
 

@@ -11,6 +11,7 @@ const costs: Readonly<Record<string, CostRule>> = {
   'cinder-marshal-special': { cost: 1, element: 'Fire', dull: true, sacrifice: false, specialName: 'Cinder Marshal' },
   'tide-warden-special': { cost: 1, element: 'Water', dull: true, sacrifice: false, specialName: 'Tide Warden' },
 };
+export function getActivationCost(handler: string): CostRule | null { return costs[handler] ?? null; }
 const fail = (code: string, message: string): RuleError => ({ code, message });
 const rejected = (code: string, message: string): ActivationReceipt => ({ errors: [fail(code, message)], events: [] });
 const find = (state: MatchState, object: ObjectId) => Object.values(state.cards).find(card => card.object === object);

@@ -1,4 +1,5 @@
 import type { ActionOffer, CastAccess, ChoiceOption, Element, EngineContext, MatchState, RuleError, Seat } from './types';
+import { getActivationCost } from './activation';
 
 const other = (seat: Seat): Seat => seat === 0 ? 1 : 0;
 const error = (code: string, message: string): RuleError => ({ code, message });
@@ -18,11 +19,11 @@ function castTiming(state: MatchState, seat: Seat, summon: boolean): RuleError[]
   return [];
 }
 
-function hasPayment(state: MatchState, seat: Seat, source: string, cost: number, elements: Element[], context: EngineContext): boolean {
+function hasPayment(state: MatchState, seat: Seat, source: string, cost: number, elements: Element[], context: EngineContext, excluded: string[] = []): boolean {
   if (cost === 0) return true;
   const targetColorless = isLightDark(elements);
   const sources = Object.values(state.cards).filter(card => {
-    if (card.owner !== seat || card.controller !== seat || card.object === source) return false;
+    if (card.owner !== seat || card.controller !== seat || card.object === source || excluded.includes(card.object)) return false;
     const definition = context.catalog[card.card];
     if (!definition || (!targetColorless && !definition.elements.some(element => elements.includes(element)))) return false;
     return (card.zone === 'field' && definition.type === 'Backup' && !card.dull) ||
@@ -121,6 +122,39 @@ export function legalActions(state: MatchState, seat: Seat, context: EngineConte
   }
   if (state.priority === seat) offers.push({ id: 'pass', kind: 'pass', source: null, label: 'Pass priority', ability: null,
     targetOptions: [], minTargets: 0, maxTargets: 0, modes: [], needsPayment: false, payment: null });
+  if (!state.result && !state.choice && state.priority === seat && !['setup', 'active', 'draw', 'end'].includes(state.phase)) {
+    for (const instance of state.field) {
+      const source = state.cards[instance]!;
+      if (source.controller !== seat) continue;
+      const definition = context.catalog[source.card]!;
+      for (const ability of definition.abilities) {
+        if (ability.kind !== 'action' && ability.kind !== 'special') continue;
+        const rule = getActivationCost(ability.handler);
+        if (!rule || !context.handlers[ability.handler] || (rule.dull && source.dull)) continue;
+        const targetCards = Object.values(state.cards).filter(target => {
+          if (ability.handler === 'recovery-clerk-bottom') return target.zone === 'break' && target.owner === seat;
+          if (ability.handler === 'ember-medic-recover') return target.zone === 'break' && target.owner === seat && context.catalog[target.card]?.type === 'Forward';
+          if (target.zone !== 'field') return false;
+          if (context.catalog[target.card]?.type !== 'Forward') return false;
+          return ability.handler !== 'forge-apprentice-buff' || context.catalog[target.card]?.elements.includes('Fire') === true;
+        });
+        const specials = rule.specialName ? state.zones[seat].hand.map(id => state.cards[id]!)
+          .filter(card => context.catalog[card.card]?.name === rule.specialName && card.object !== source.object) : [];
+        if (targetCards.length === 0 || (rule.specialName !== null && specials.length === 0)) continue;
+        if (!hasPayment(state, seat, source.object, rule.cost, definition.elements, context, specials.map(card => card.object))) continue;
+        const targetOptions = targetCards.map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object }));
+        const handOptions = state.zones[seat].hand.map(id => state.cards[id]!).filter(card =>
+          card.object !== source.object && !specials.some(special => special.object === card.object)).map(card => card.object);
+        const backups = state.field.map(id => state.cards[id]!).filter(card => card.controller === seat &&
+          context.catalog[card.card]?.type === 'Backup' && !card.dull && card.object !== source.object).map(card => card.object);
+        offers.push({ id: `activate:${source.object}:${ability.id}`, kind: 'activate', source: source.object,
+          label: `Activate ${ability.text}`, ability: ability.id, targetOptions, minTargets: 1, maxTargets: 1,
+          modes: [], needsPayment: rule.cost > 0 || rule.dull || rule.sacrifice || rule.specialName !== null,
+          payment: { cost: rule.cost, commanderTax: 0, elements: definition.elements, discardOptions: handOptions,
+            backupOptions: backups, specialOptions: specials.map(card => card.object), dullSource: rule.dull, sacrificeSource: rule.sacrifice } });
+      }
+    }
+  }
   // Combat declarations are derived from the same current objects as reducer validation.
   if (state.phase === 'attack' && state.active === seat && !state.combat) {
     const attackers = state.field.map(id => state.cards[id]!).filter(card => card.controller === seat &&

@@ -373,7 +373,7 @@ function render(): void {
       ? `<button class="primary small" id="play-summon">Cast Summon · ${selectedDef.cost} CP</button>` : '',
     castingSource === selected.object && selectedDef.summonHandler === 'controlled-burn' && !selectedMode
       ? '<button class="soft small" data-mode="backup">Break Backup</button><button class="soft small" data-mode="forward">Remove Forward</button>' : '',
-    selected.zone === 'field' && selected.controller === bottomSeat ? selectedDef.abilities.filter(ability => abilityCost(ability.handler) && ability.kind !== 'auto')
+    selected.zone === 'field' && selected.controller === bottomSeat ? selectedDef.abilities.filter(ability => abilityCost(ability.handler) && ability.kind !== 'auto' && actionView.actions.some(action => action.kind === 'activate' && action.source === selected.object && action.ability === ability.id))
       .map(ability => `<button class="soft small" data-ability="${ability.id}" ${selected.dull ? 'disabled' : ''}>${ability.kind === 'special' ? 'Special · ' : ''}${ability.id.includes('forge') ? 'Boost Forward' : ability.id.includes('wave') ? 'Activate Forward' : 'Special Ability'}</button>`).join('') : '',
     selected.zone === 'field' && selected.controller === bottomSeat && selectedDef.type === 'Forward' && state.phase === 'attack' && state.active === bottomSeat && state.priority === bottomSeat && !state.combat
       ? '<button class="primary small" id="attack-card">Attack with this Forward</button>' : '',

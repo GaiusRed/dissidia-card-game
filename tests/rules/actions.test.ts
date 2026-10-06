@@ -55,4 +55,22 @@ describe('read-only action availability', () => {
     expect(response.canDeclare).toBe(true);
     expect(legalActions(h.state, 1, context).some(action => action.source === response.source)).toBe(true);
   });
+
+  it('offers an activated action only when its source and target are legal', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-010C', zone: 'field' },
+      { seat: 0, card: 'P-003C', zone: 'field' },
+    ] });
+    const actions = legalActions(h.state, 0, context);
+    const offer = actions.find(action => action.kind === 'activate' && action.source === h.object(0, 'P-010C'))!;
+    expect(offer).toBeDefined();
+    expect(offer.ability).toBe('forge-apprentice-action');
+    expect(offer.targetOptions.map(target => target.id)).toContain(h.object(0, 'P-003C'));
+    expect(offer.payment?.dullSource).toBe(true);
+  });
+
+  it('hides activated offers when the source is dull or no legal target exists', () => {
+    const h = fixture({ placements: [{ seat: 0, card: 'P-010C', zone: 'field', dull: true }] });
+    expect(legalActions(h.state, 0, context).some(action => action.kind === 'activate')).toBe(false);
+  });
 });
