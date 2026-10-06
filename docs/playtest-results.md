@@ -4,7 +4,7 @@
 
 | Check | Result |
 |---|---|
-| Rule, format, setup, payment, combat, stack, storage, host, editor, action-offer, tray, and scenario tests | Passed; 98 tests across 28 files |
+| Rule, format, setup, payment, combat, stack, storage, host, editor, action-offer, tray, and scenario tests | Passed; 101 tests across 28 files |
 | Strict TypeScript checks | Passed with engine version 2 |
 | Rule import boundary | Passed; rules contain no forbidden platform dependencies |
 | Production build and service-worker generation | Passed; Phaser bundle is precached locally |

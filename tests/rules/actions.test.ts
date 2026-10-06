@@ -73,4 +73,16 @@ describe('read-only action availability', () => {
     const h = fixture({ placements: [{ seat: 0, card: 'P-010C', zone: 'field', dull: true }] });
     expect(legalActions(h.state, 0, context).some(action => action.kind === 'activate')).toBe(false);
   });
+
+  it('offers only real blocker selections; passing priority declines to block', () => {
+    const h = fixture({ phase: 'attack', active: 0, priority: 1, placements: [
+      { seat: 0, card: 'P-003C', zone: 'field', controlledSinceTurn: 1 },
+      { seat: 1, card: 'P-023C', zone: 'field', controlledSinceTurn: 1 },
+    ] });
+    h.state.combat = { step: 'block', attackers: [h.object(0, 'P-003C')], blocker: null, wasBlocked: false, allocation: {} };
+    const action = legalActions(h.state, 1, context).find(offer => offer.kind === 'block');
+    expect(action?.minTargets).toBe(1);
+    expect(action?.maxTargets).toBe(1);
+    expect(action?.targetOptions.map(option => option.id)).toEqual([h.object(1, 'P-023C')]);
+  });
 });

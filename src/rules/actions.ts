@@ -167,9 +167,9 @@ export function legalActions(state: MatchState, seat: Seat, context: EngineConte
   if (state.phase === 'attack' && state.active !== seat && state.combat?.step === 'block') {
     const blockers = state.field.map(id => state.cards[id]!).filter(card => card.controller === seat &&
       context.catalog[card.card]?.type === 'Forward' && !card.dull && !card.frozen);
-    offers.push({ id: 'block:none', kind: 'block', source: null, label: 'Do not block', ability: null,
+    if (blockers.length > 0) offers.push({ id: 'block:choose', kind: 'block', source: null, label: 'Choose a blocker', ability: null,
       targetOptions: blockers.map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object })),
-      minTargets: 0, maxTargets: 1, modes: [], needsPayment: false, payment: null });
+      minTargets: 1, maxTargets: 1, modes: [], needsPayment: false, payment: null });
   }
   return offers;
 }
