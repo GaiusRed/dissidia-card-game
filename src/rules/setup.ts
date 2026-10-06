@@ -47,7 +47,7 @@ export function createMatch(options: StartOptions, context: EngineContext): Matc
     if (errors.length) throw new Error(errors.map(item => item.message).join(' '));
   }
   const state: MatchState = {
-    versions: { schema: '1', engine: '1', format: options.format.id, catalog: context.catalog['P-001L']?.version ?? 'catalog-v1' },
+    versions: { schema: '1', engine: '2', format: options.format.id, catalog: context.catalog['P-001L']?.version ?? 'catalog-v1' },
     seq: 0, rng: options.seed >>> 0, nextId: 0, format: options.format,
     turn: 0, active: 0, firstPlayer: 0, phase: 'setup', priority: null, passes: 0,
     cards: {}, zones: { 0: zones(), 1: zones() }, field: [], stackCards: [],

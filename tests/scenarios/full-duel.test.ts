@@ -17,11 +17,22 @@ function send(state: MatchState, seat: Seat, intent: Intent): MatchState {
 }
 
 function passBoth(state: MatchState): MatchState {
+  const settleChoices = (): void => {
+    while (state.choice && !state.result) {
+      const choice = state.choice;
+      const selected = choice.kind === 'confirm' && choice.options.some(option => option.id === 'skip')
+        ? ['skip'] : choice.kind === 'order' ? choice.options.map(option => option.id)
+          : choice.options.slice(0, choice.min).map(option => option.id);
+      state = send(state, choice.seat, { kind: 'answer', answer: { choice: choice.id, selected, amounts: {} } });
+    }
+  };
+  settleChoices();
   for (let count = 0; count < 2; count += 1) {
     if (state.result) return state;
     const seat = state.priority;
     if (seat === null) throw new Error('Expected a player with priority.');
     state = send(state, seat, { kind: 'pass' });
+    settleChoices();
   }
   return state;
 }

@@ -2,6 +2,8 @@ import type { EngineContext, MatchState, Result, Seat } from './types';
 
 export function checkOutcomes(state: MatchState, _context: EngineContext): void {
   if (state.result) return;
+  // Rule processes wait until the complete damage resolution and every EX Burst finish.
+  if (state.work.some(item => item.handler === 'damage' && item.step === 'offer-ex')) return;
   const damageLosers = ([0, 1] as const).filter(seat => state.zones[seat].damage.length >= state.format.damageLimit);
   const emptyDraws = state.work.filter(item => item.handler === 'rule-process' && item.step === 'empty-deck')
     .map(item => (item.data as { seat: Seat }).seat);

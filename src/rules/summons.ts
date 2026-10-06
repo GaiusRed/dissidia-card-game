@@ -1,7 +1,8 @@
 import { moveCard } from './zones';
 import { requestDeparture } from './commander';
 import { addKeyword, addPower, changeControl, effectivePower, setPower } from './continuous';
-import { replacementDamage } from './damage';
+import { dealPlayerDamage, replacementDamage } from './damage';
+import { isTargetLegal } from './targets';
 import type { EngineContext, MatchState, RuleEvent, Seat, StackItem } from './types';
 
 function event(state: MatchState, type: string, data: RuleEvent['data']): RuleEvent {
@@ -16,17 +17,12 @@ function deal(state: MatchState, targetObject: string, amount: number, context: 
   events.push(event(state, 'forward.damaged', { object: target.object, amount: applied, prevented: amount - applied }));
   const power = effectivePower(state, target.object, context);
   if (target.damage >= power) {
-    const receipt = requestDeparture(state, target.instance, 'break');
+    const receipt = requestDeparture(state, target.instance, 'break', context);
     if (receipt) events.push(event(state, 'forward.broken', { object: receipt.old.object, card: receipt.old.card, destination: 'break' }));
   }
 }
-function playerDamage(state: MatchState, seat: Seat, count: number, source: string, events: RuleEvent[]): void {
-  for (let index = 0; index < count; index += 1) {
-    const instance = state.zones[seat].deck[0];
-    if (!instance) { state.work.push({ handler: 'rule-process', step: 'empty-deck', data: { seat } }); break; }
-    const moved = moveCard(state, instance, 'damage');
-    events.push(event(state, 'player.damaged', { seat, card: moved.card, source }));
-  }
+function playerDamage(state: MatchState, seat: Seat, count: number, source: string, events: RuleEvent[], context: EngineContext): void {
+  events.push(...dealPlayerDamage(state, seat, count, source, context));
 }
 
 function drawCards(state: MatchState, seat: Seat, count: number, source: string, events: RuleEvent[]): void {
@@ -45,10 +41,11 @@ function drawCards(state: MatchState, seat: Seat, count: number, source: string,
 export function resolveSummon(state: MatchState, item: StackItem, context: EngineContext): RuleEvent[] {
   const events: RuleEvent[] = [];
   const handler = item.handler;
-  if (handler === 'scorch') deal(state, item.targets[0]!, 4000, context, events);
+  const targets = item.targets.filter(target => isTargetLegal(state, item, target, context));
+  if (handler === 'scorch' && targets.length > 0) deal(state, targets[0]!, 4000, context, events);
   else if (handler === 'twin-embers') {
-    for (const target of item.targets) deal(state, target, 3000, context, events);
-  } else if (handler === 'final-spark') playerDamage(state, item.controller === 0 ? 1 : 0, 2, item.lastKnown.card, events);
+    for (const target of targets) deal(state, target, 3000, context, events);
+  } else if (handler === 'final-spark') playerDamage(state, item.controller === 0 ? 1 : 0, 2, item.lastKnown.card, events, context);
   else if (handler === 'rising-undertow') {
     drawCards(state, item.controller, 2, item.lastKnown.card, events);
     const id = `effect-${state.nextId++}`;
@@ -56,14 +53,14 @@ export function resolveSummon(state: MatchState, item: StackItem, context: Engin
       handler: 'undertow-discard', data: { seat: item.controller, instance: item.lastKnown.instance }, expiresTurn: state.turn });
     events.push(event(state, 'undertow.discard-scheduled', { seat: item.controller }));
   }
-  else if (handler === 'return-tide') {
-    const target = getObject(state, item.targets[0]!);
+  else if (handler === 'return-tide' && targets.length > 0) {
+    const target = getObject(state, targets[0]!);
     if (target?.zone === 'field' && context.catalog[target.card]?.type === 'Forward') {
-      const receipt = requestDeparture(state, target.instance, 'hand');
+      const receipt = requestDeparture(state, target.instance, 'hand', context);
       if (receipt) events.push(event(state, 'forward.returned', { object: receipt.old.object, card: receipt.old.card, owner: receipt.old.owner }));
     }
   } else if (handler === 'war-cry' || handler === 'guarding-current' || handler === 'shape-tide') {
-    const target = getObject(state, item.targets[0]!);
+    const target = targets.length > 0 ? getObject(state, targets[0]!) : undefined;
     if (target?.zone === 'field') {
       if (handler === 'war-cry') {
         addPower(state, item.source, target.object, 3000, state.turn);
@@ -74,21 +71,21 @@ export function resolveSummon(state: MatchState, item: StackItem, context: Engin
       } else setPower(state, item.source, target.object, 4000, state.turn);
       events.push(event(state, 'forward.effect-applied', { object: target.object, handler }));
     }
-  } else if (handler === 'ashen-verdict' || handler === 'controlled-burn') {
-    const target = getObject(state, item.targets[0]!);
+  } else if ((handler === 'ashen-verdict' || handler === 'controlled-burn') && targets.length > 0) {
+    const target = getObject(state, targets[0]!);
     if (target?.zone === 'field') {
       const destination = handler === 'ashen-verdict' || item.mode === 'backup' ? 'break' : 'removed';
-      const receipt = requestDeparture(state, target.instance, destination);
+      const receipt = requestDeparture(state, target.instance, destination, context);
       if (receipt) events.push(event(state, 'card.removed-by-summon', { object: receipt.old.object, card: receipt.old.card, destination }));
     }
-  } else if (handler === 'borrowed-banner') {
-    const target = getObject(state, item.targets[0]!);
+  } else if (handler === 'borrowed-banner' && targets.length > 0) {
+    const target = getObject(state, targets[0]!);
     if (target?.zone === 'field') {
       changeControl(state, item.source, target.object, item.controller, state.turn);
       events.push(event(state, 'card.control-changed', { object: target.object, controller: item.controller }));
     }
-  } else if (handler === 'stillwater') {
-    const index = state.stack.findIndex(candidate => candidate.source === item.targets[0]);
+  } else if (handler === 'stillwater' && targets.length > 0) {
+    const index = state.stack.findIndex(candidate => candidate.source === targets[0]);
     if (index >= 0) {
       const [cancelled] = state.stack.splice(index, 1);
       if (cancelled) {

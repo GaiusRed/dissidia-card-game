@@ -19,7 +19,7 @@ export interface ActivationReceipt { errors: RuleError[]; events: RuleEvent[] }
 export function activateAbility(state: MatchState, seat: Seat, sourceId: ObjectId, abilityId: string, targets: ObjectId[], payment: Payment, context: EngineContext): ActivationReceipt {
   const source = find(state, sourceId);
   if (!source || source.zone !== 'field' || source.controller !== seat) return rejected('INVALID_ABILITY_SOURCE', 'Activate an ability on a card you control on the field.');
-  if (state.choice || state.priority !== seat || state.phase === 'setup' || state.phase === 'active' || state.phase === 'draw' || state.result) {
+  if (state.choice || state.priority !== seat || state.phase === 'setup' || state.phase === 'active' || state.phase === 'draw' || state.phase === 'end' || state.result) {
     return rejected('WRONG_TIMING', 'Activate an ability only while you have priority.');
   }
   const definition = context.catalog[source.card];

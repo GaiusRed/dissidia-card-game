@@ -44,6 +44,6 @@ Use **Export save** to download a JSON diagnostic file. Use **Import** to restor
 
 ## Scope and known gaps
 
-The card set is synthetic. It represents rules interactions and does not reproduce official FFTCG cards. The rules engine and table are not complete yet. The current build does not support every placeholder ability, Summon, trigger, EX Burst, choice, effect layer, or combat allocation rule. Check [the coverage table](rules-coverage.md) before a playtest and record any manual workaround.
+The card set is synthetic. It represents rules interactions and does not reproduce official FFTCG cards. The rules engine and table are not complete yet. The current build does not support every placeholder ability, Summon, trigger, EX Burst, choice, effect layer, or combat allocation rule. Check [the coverage table](rules-coverage.md) before a playtest and record any manual workaround. Engine version 2 changes EX Burst and End Phase timing; older saves require export for reference and cannot resume in this version.
 
 Pets, board cosmetics, card collections, pack opening, matchmaking, and online accounts are outside this MVP.

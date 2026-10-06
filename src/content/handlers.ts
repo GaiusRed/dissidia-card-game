@@ -26,7 +26,7 @@ function damageForward(context: Parameters<AbilityHandler>[0], object: string, a
   target.damage += applied;
   const events = [emit(context.state, 'forward.damaged', { object: target.object, amount: applied, prevented: amount - applied })];
   if (target.damage >= effectivePower(context.state, target.object, context)) {
-    const receipt = requestDeparture(context.state, target.instance, 'break');
+    const receipt = requestDeparture(context.state, target.instance, 'break', context);
     if (receipt) events.push(emit(context.state, 'forward.broken', { object: receipt.old.object, card: receipt.old.card, destination: 'break' }));
   }
   return events;
@@ -69,7 +69,7 @@ export const abilityHandlers: Readonly<Record<string, AbilityHandler>> = {
   'tide-warden-special': handler((context, _source, targets) => {
     const target = card(context.state, targets[0] ?? '');
     if (!target || target.zone !== 'field' || context.catalog[target.card]?.type !== 'Forward') return [];
-    const receipt = requestDeparture(context.state, target.instance, 'hand');
+    const receipt = requestDeparture(context.state, target.instance, 'hand', context);
     return receipt ? [emit(context.state, 'forward.returned', { card: receipt.old.card, owner: receipt.old.owner })] : [];
   }),
   'dusk-reaver-enter': chooseForward('Dusk Reaver', (context, target) => {
@@ -92,11 +92,21 @@ export const abilityHandlers: Readonly<Record<string, AbilityHandler>> = {
   'quartermaster-search': quartermasterSearch,
   'rising-undertow-end-discard': risingUndertowDiscard,
   'archive-keeper-draw-discard': archiveKeeperDrawDiscard,
+  'cinder-witness-damage': chooseForward('Cinder Witness', (context, target) => damageForward(context, target.object, 1000)),
+  'night-regent-leave': chooseForward('Night Regent', (context, target) => {
+    const data = context.frame.data && typeof context.frame.data === 'object' && !Array.isArray(context.frame.data)
+      ? context.frame.data as Record<string, Json> : {};
+    const amount = typeof data.lastPower === 'number' ? data.lastPower : 0;
+    addPower(context.state, String(data.source ?? ''), target.object, -amount, context.state.turn);
+    return emit(context.state, 'forward.power-reduced', { object: target.object, amount });
+  }),
+  'tide-witness-draw': tideWitnessDraw,
+  'ex-burst': exBurst,
 };
 
 function chooseForward(
   name: string,
-  apply: (context: Parameters<AbilityHandler>[0], target: NonNullable<ReturnType<typeof card>>) => RuleEvent,
+  apply: (context: Parameters<AbilityHandler>[0], target: NonNullable<ReturnType<typeof card>>) => RuleEvent | RuleEvent[],
 ): AbilityHandler {
   return context => {
     const data = payload(context.frame.data);
@@ -108,7 +118,8 @@ function chooseForward(
       if (!target || target.zone !== 'field' || context.catalog[target.card]?.type !== 'Forward') {
         return { events: [], next: [], choice: null };
       }
-      return { events: [apply(context, target)], next: [], choice: null };
+      const result = apply(context, target);
+      return { events: Array.isArray(result) ? result : [result], next: [], choice: null };
     }
     const seat = extra.seat === 1 ? 1 : 0;
     const forwards = context.state.field.map(instance => context.state.cards[instance]!)
@@ -120,9 +131,38 @@ function chooseForward(
         reason: `${name}: choose a Forward.`,
         options: forwards.map(target => ({ id: target.object, label: context.catalog[target.card]!.name, object: target.object })),
         min: 1, max: 1, allocation: null,
-        resume: { handler: context.frame.handler, step: 'choice', data: { source: data.source ?? '', seat, selected: [] } },
+        resume: { handler: context.frame.handler, step: 'choice', data: {
+          ...extra, source: data.source ?? '', seat, selected: [],
+          ...(typeof extra.lastPower === 'number' ? { lastPower: extra.lastPower } : {}),
+        } },
       },
     };
+  };
+}
+
+function tideWitnessDraw(context: Parameters<AbilityHandler>[0]) {
+  const data = context.frame.data && typeof context.frame.data === 'object' && !Array.isArray(context.frame.data)
+    ? context.frame.data as Record<string, Json> : {};
+  const seat: Seat = data.seat === 1 ? 1 : 0;
+  if (context.frame.step === 'choice') {
+    const selected = Array.isArray(data.selected) ? data.selected[0] : undefined;
+    if (selected !== 'draw') return { events: [emit(context.state, 'trigger.declined', { seat, ability: 'tide-witness-draw' })], next: [], choice: null };
+    const instance = context.state.zones[seat].deck[0];
+    if (!instance) {
+      context.state.work.push({ handler: 'rule-process', step: 'empty-deck', data: { seat } });
+      return { events: [emit(context.state, 'player.attempted-empty-draw', { seat, source: 'Tide Witness' })], next: [], choice: null };
+    }
+    const old = moveCard(context.state, instance, 'hand');
+    return { events: [emit(context.state, 'card.drawn', { seat, card: old.card, source: 'Tide Witness' })], next: [], choice: null };
+  }
+  return {
+    events: [], next: [], choice: {
+      id: `choice-${context.state.nextId++}`, seat, kind: 'confirm' as const,
+      reason: 'Tide Witness: you may draw 1 card.',
+      options: [{ id: 'draw', label: 'Draw 1 card', object: null }, { id: 'skip', label: 'Do not draw', object: null }],
+      min: 1, max: 1, allocation: null,
+      resume: { handler: 'tide-witness-draw', step: 'choice', data: { seat, selected: [] } },
+    },
   };
 }
 
@@ -212,4 +252,40 @@ function archiveKeeperDrawDiscard(context: Parameters<AbilityHandler>[0]) {
       resume: { handler: 'archive-keeper-draw-discard', step: 'choice', data: { seat, selected: [] } },
     },
   };
+}
+
+function exBurst(context: Parameters<AbilityHandler>[0]) {
+  const data = context.frame.data && typeof context.frame.data === 'object' && !Array.isArray(context.frame.data)
+    ? context.frame.data as Record<string, Json> : {};
+  const seat: Seat = data.seat === 1 ? 1 : 0;
+  const cardNumber = typeof data.card === 'string' ? data.card : '';
+  if (context.frame.step === 'decision') {
+    const selected = Array.isArray(data.selected) ? data.selected[0] : undefined;
+    if (selected !== 'use') return { events: [emit(context.state, 'ex-burst.skipped', { seat, card: cardNumber })], next: [], choice: null };
+    if (cardNumber === 'P-031R') return archiveKeeperDrawDiscard({
+      ...context, frame: { ...context.frame, handler: 'archive-keeper-draw-discard', step: 'resolve', data: { seat } },
+    });
+    const source = typeof data.source === 'string' ? data.source : '';
+    const label = cardNumber === 'P-015C' ? 'Scorch EX Burst' : 'Return Tide EX Burst';
+    const forwards = context.state.field.map(instance => context.state.cards[instance]!)
+      .filter(target => context.catalog[target.card]?.type === 'Forward');
+    if (forwards.length === 0) return { events: [emit(context.state, 'ex-burst.resolved', { seat, card: cardNumber })], next: [], choice: null };
+    return { events: [], next: [], choice: {
+      id: `choice-${context.state.nextId++}`, seat, kind: 'targets' as const, reason: `${label}: choose a Forward.`,
+      options: forwards.map(target => ({ id: target.object, label: context.catalog[target.card]!.name, object: target.object })),
+      min: 1, max: 1, allocation: null,
+      resume: { handler: 'ex-burst', step: 'target', data: { seat, card: cardNumber, source } },
+    } };
+  }
+  if (context.frame.step === 'target') {
+    const selected = Array.isArray(data.selected) ? data.selected[0] : undefined;
+    const target = typeof selected === 'string' ? card(context.state, selected) : undefined;
+    if (!target || target.zone !== 'field' || context.catalog[target.card]?.type !== 'Forward') return { events: [], next: [], choice: null };
+    if (cardNumber === 'P-015C') return { events: damageForward(context, target.object, 4000), next: [], choice: context.state.choice };
+    if (cardNumber === 'P-035C') {
+      const receipt = requestDeparture(context.state, target.instance, 'hand', context);
+      return { events: receipt ? [emit(context.state, 'forward.returned', { object: receipt.old.object, card: receipt.old.card, owner: receipt.old.owner })] : [], next: [], choice: context.state.choice };
+    }
+  }
+  return { events: [], next: [], choice: null };
 }

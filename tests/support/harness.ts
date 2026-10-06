@@ -20,7 +20,7 @@ export const context: EngineContext = { catalog: opusPh, handlers: abilityHandle
 
 export function fixture(input: Fixture): Harness {
   const state: MatchState = {
-    versions: { schema: '1', engine: '1', format: 'commander-duel-ph-v1', catalog: 'opus-ph-v1' },
+    versions: { schema: '1', engine: '2', format: 'commander-duel-ph-v1', catalog: 'opus-ph-v1' },
     seq: 0, rng: 17, nextId: 41, format: { id: 'commander-duel-ph-v1', mainSize: 19, allowedSets: ['opus-ph'], damageLimit: 7 },
     turn: input.turn ?? 3, active: input.active ?? 0, firstPlayer: 0, phase: input.phase ?? 'main1',
     priority: input.priority ?? input.active ?? 0, passes: 0, cards: {},

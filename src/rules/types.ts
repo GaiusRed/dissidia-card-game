@@ -96,6 +96,6 @@ export interface CastAccess {
   blockedReasons: RuleError[]; displayedCost: number; commanderTax: number;
 }
 export interface EngineContext { catalog: Catalog; handlers: Readonly<Record<string, AbilityHandler>> }
-export interface HandlerContext { state: MatchState; catalog: Catalog; frame: Continuation }
+export interface HandlerContext { state: MatchState; catalog: Catalog; handlers: Readonly<Record<string, AbilityHandler>>; frame: Continuation }
 export interface HandlerResult { events: RuleEvent[]; next: Continuation[]; choice: Choice | null }
 export type AbilityHandler = (context: HandlerContext) => HandlerResult;

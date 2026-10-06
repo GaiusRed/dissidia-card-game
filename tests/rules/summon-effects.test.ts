@@ -70,7 +70,7 @@ describe('placeholder Summon effects', () => {
   });
 
   it('gives control through the turn and returns the card to its owner at turn end', () => {
-    const h = fixture({ phase: 'end', priority: 1, placements: [
+    const h = fixture({ phase: 'main2', active: 1, priority: 1, placements: [
       { seat: 1, card: 'P-039H', zone: 'hand' }, { seat: 1, card: 'P-022C', zone: 'hand' }, { seat: 1, card: 'P-023C', zone: 'hand' },
       { seat: 0, card: 'P-003C', zone: 'field' },
     ] });
@@ -82,10 +82,16 @@ describe('placeholder Summon effects', () => {
     const reply = cast(state, 1, source.object, [target.object], { discard: [firstDiscard.object, secondDiscard.object], dullBackups: [], specialDiscard: null,
       dullSource: false, sacrificeSource: false, sourceElements: { [firstDiscard.object]: 'Water', [secondDiscard.object]: 'Water' }, spend: { Water: 4 } });
     if (!reply.ok) throw new Error(reply.error.message); state = reply.state;
-    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    while (state.cards[target.instance]!.controller !== 1 && !state.result) {
+      const next = pass(state, state.priority!); if (!next.ok) throw new Error(next.error.message); state = next.state;
+      if (state.choice) break;
+    }
     expect(state.cards[target.instance]!.controller).toBe(1);
-    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
-    expect(state.active).toBe(1);
+    while (state.active === 1 && !state.result) {
+      const next = pass(state, state.priority!); if (!next.ok) throw new Error(next.error.message); state = next.state;
+      if (state.choice) break;
+    }
+    expect(state.active).toBe(0);
     expect(state.cards[target.instance]!.controller).toBe(0);
   });
 
@@ -104,7 +110,7 @@ describe('placeholder Summon effects', () => {
     for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
     expect(state.phase).toBe('end');
     expect(state.stack).toHaveLength(1);
-    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
     expect(state.choice?.seat).toBe(1);
     expect(state.choice?.reason).toContain('discard');
     const selected = state.cards[state.zones[1].hand[0]!]!;

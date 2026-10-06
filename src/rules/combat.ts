@@ -1,7 +1,6 @@
 import { requestDeparture } from './commander';
-import { moveCard } from './zones';
 import { effectivePower, hasKeyword } from './continuous';
-import { replacementDamage } from './damage';
+import { dealPlayerDamage, replacementDamage } from './damage';
 import type { EngineContext, MatchState, ObjectId, RuleError, RuleEvent, Seat } from './types';
 
 const err = (code: string, message: string): RuleError => ({ code, message });
@@ -56,20 +55,13 @@ export function resolveCombat(state: MatchState, context: EngineContext): RuleEv
     target.damage += applied;
     events.push(event(state, 'combat.damage', { target: target.object, amount: applied, prevented: amount - applied }));
     if (target.damage >= effectivePower(state, target.object, context)) {
-      const receipt = requestDeparture(state, target.instance, 'break');
+      const receipt = requestDeparture(state, target.instance, 'break', context);
       if (receipt) events.push(event(state, 'forward.broken', { object: receipt.old.object, card: receipt.old.card, destination: 'break' }));
     }
   };
   if (!blocker || blocker.zone !== 'field') {
     const defender: Seat = other(state.active);
-    const top = state.zones[defender].deck[0];
-    if (top) {
-      const moved = moveCard(state, top, 'damage');
-      events.push(event(state, 'player.damaged', { seat: defender, card: moved.card, source: attacker.card }));
-    } else {
-      state.work.push({ handler: 'rule-process', step: 'empty-deck', data: { seat: defender } });
-      events.push(event(state, 'player.damaged-empty-deck', { seat: defender }));
-    }
+    events.push(...dealPlayerDamage(state, defender, 1, attacker.card, context));
   } else {
     const attackerFirst = hasKeyword(state, attacker.object, 'First Strike', context);
     const blockerFirst = hasKeyword(state, blocker.object, 'First Strike', context);

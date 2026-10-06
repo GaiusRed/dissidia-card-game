@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { effectivePower } from '../../src/rules/continuous';
 import { applyCommand } from '../../src/rules/engine';
+import { requestDeparture } from '../../src/rules/commander';
 import { context, fixture } from '../support/harness';
 
 describe('automatic abilities', () => {
@@ -144,7 +145,7 @@ describe('automatic abilities', () => {
     }
     expect(state.phase).toBe('end');
     expect(state.stack).toHaveLength(1);
-    for (const seat of [0, 1] as const) {
+    for (const seat of [1, 0] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       state = passed.state;
@@ -243,5 +244,74 @@ describe('automatic abilities', () => {
     } }, context);
     expect(answered.ok).toBe(true);
     if (answered.ok) expect(answered.state.cards[toDiscard.instance]!.zone).toBe('break');
+  });
+
+  it('triggers Cinder Witness after a Forward it controls enters the Break Zone', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-014R', zone: 'field' }, { seat: 0, card: 'P-003C', zone: 'field' },
+      { seat: 0, card: 'P-004C', zone: 'field' },
+    ] });
+    const state = h.state;
+    const leaving = Object.values(state.cards).find(card => card.card === 'P-003C')!;
+    const target = Object.values(state.cards).find(card => card.card === 'P-004C')!;
+    requestDeparture(state, leaving.instance, 'break', context);
+    expect(state.cards[leaving.instance]!.zone).toBe('break');
+    expect(state.stack).toHaveLength(1);
+    let current = state;
+    for (const seat of [1, 0] as const) {
+      const passed = applyCommand(current, { id: `pass-${current.seq}`, expectedSeq: current.seq, seat, intent: { kind: 'pass' } }, context);
+      if (!passed.ok) throw new Error(passed.error.message);
+      current = passed.state;
+    }
+    const choice = current.choice!;
+    const answered = applyCommand(current, { id: 'witness-target', expectedSeq: current.seq, seat: 0, intent: {
+      kind: 'answer', answer: { choice: choice.id, selected: [target.object], amounts: {} },
+    } }, context);
+    expect(answered.ok).toBe(true);
+    if (answered.ok) expect(answered.state.cards[target.instance]!.damage).toBe(1000);
+  });
+
+  it('uses Night Regent’s last known power when it leaves for the Break Zone', () => {
+    const h = fixture({ placements: [
+      { seat: 1, card: 'P-027H', zone: 'field' }, { seat: 1, card: 'P-024C', zone: 'field' },
+    ] });
+    const state = h.state;
+    const regent = Object.values(state.cards).find(card => card.card === 'P-027H')!;
+    const target = Object.values(state.cards).find(card => card.card === 'P-024C')!;
+    requestDeparture(state, regent.instance, 'break', context);
+    let current = state;
+    for (const seat of [0, 1] as const) {
+      const passed = applyCommand(current, { id: `pass-${current.seq}`, expectedSeq: current.seq, seat, intent: { kind: 'pass' } }, context);
+      if (!passed.ok) throw new Error(passed.error.message);
+      current = passed.state;
+    }
+    const choice = current.choice!;
+    const answered = applyCommand(current, { id: 'regent-target', expectedSeq: current.seq, seat: 1, intent: {
+      kind: 'answer', answer: { choice: choice.id, selected: [target.object], amounts: {} },
+    } }, context);
+    expect(answered.ok).toBe(true);
+    if (answered.ok) expect(effectivePower(answered.state, target.object, context)).toBe(0);
+  });
+
+  it('offers Tide Witness an optional draw when its Forward leaves the field', () => {
+    const h = fixture({ placements: [
+      { seat: 1, card: 'P-033R', zone: 'field' }, { seat: 1, card: 'P-023C', zone: 'field' },
+    ], deckTop: { 1: ['P-024C'] } });
+    const state = h.state;
+    const leaving = Object.values(state.cards).find(card => card.card === 'P-023C')!;
+    requestDeparture(state, leaving.instance, 'hand', context);
+    let current = state;
+    for (const seat of [0, 1] as const) {
+      const passed = applyCommand(current, { id: `pass-${current.seq}`, expectedSeq: current.seq, seat, intent: { kind: 'pass' } }, context);
+      if (!passed.ok) throw new Error(passed.error.message);
+      current = passed.state;
+    }
+    const choice = current.choice!;
+    expect(choice.reason).toContain('may draw');
+    const answered = applyCommand(current, { id: 'tide-witness-draw', expectedSeq: current.seq, seat: 1, intent: {
+      kind: 'answer', answer: { choice: choice.id, selected: ['draw'], amounts: {} },
+    } }, context);
+    expect(answered.ok).toBe(true);
+    if (answered.ok) expect(answered.state.cards[Object.values(answered.state.cards).find(card => card.card === 'P-024C')!.instance]!.zone).toBe('hand');
   });
 });

@@ -1,5 +1,7 @@
 import type { CardObject, EngineContext, InstanceId, MatchState, Zone } from './types';
 import { moveCard } from './zones';
+import { scheduleDepartureAbilities } from './triggers';
+import { effectivePower } from './continuous';
 
 export interface DepartureReceipt { old: CardObject; destination: Zone }
 export function commanderCost(state: MatchState, instance: InstanceId, context: EngineContext): number {
@@ -12,12 +14,17 @@ export function commanderCost(state: MatchState, instance: InstanceId, context: 
   return definition.cost + tax;
 }
 
-export function requestDeparture(state: MatchState, instance: InstanceId, destination: Zone): DepartureReceipt | null {
+export function requestDeparture(state: MatchState, instance: InstanceId, destination: Zone, context?: EngineContext): DepartureReceipt | null {
   const card = state.cards[instance];
   if (!card) throw new Error('A card cannot leave from an unknown instance.');
   if (card.zone !== 'field') return { old: moveCard(state, instance, destination), destination };
   const commander = state.commanders[card.owner];
-  if (commander.instance !== instance) return { old: moveCard(state, instance, destination), destination };
+  if (commander.instance !== instance) {
+    const lastPower = context ? effectivePower(state, card.object, context) : 0;
+    const old = moveCard(state, instance, destination);
+    if (context) scheduleDepartureAbilities(state, old, destination, context, lastPower);
+    return { old, destination };
+  }
   if (state.choice) throw new Error('Finish the current decision before starting a departure.');
   state.choice = {
     id: 'choice-' + state.nextId++, seat: card.owner, kind: 'confirm',
@@ -32,7 +39,7 @@ export function requestDeparture(state: MatchState, instance: InstanceId, destin
   return null;
 }
 
-export function resolveDeparture(state: MatchState, selected: string): DepartureReceipt | null {
+export function resolveDeparture(state: MatchState, selected: string, context?: EngineContext): DepartureReceipt | null {
   const pending = state.choice;
   if (!pending || pending.resume.handler !== 'departure' || pending.resume.step !== 'commander-return') return null;
   if (!pending.options.some(option => option.id === selected)) return null;
@@ -40,8 +47,10 @@ export function resolveDeparture(state: MatchState, selected: string): Departure
   const card = state.cards[data.instance];
   if (!card || card.zone !== 'field' || card.owner !== pending.seat) return null;
   const old = { ...card };
+  const lastPower = context ? effectivePower(state, card.object, context) : 0;
   const destination = selected === 'return' ? 'commander' : data.destination;
   state.choice = null;
   moveCard(state, data.instance, destination);
+  if (context) scheduleDepartureAbilities(state, old, destination, context, lastPower);
   return { old, destination };
 }

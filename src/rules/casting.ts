@@ -54,7 +54,7 @@ export function castSummon(state: MatchState, seat: Seat, source: ObjectId, targ
   const definition = context.catalog[card.card];
   if (!definition || definition.type !== 'Summon' || !definition.summonHandler) return [error('NOT_A_SUMMON', 'This card cannot be cast as a Summon.')];
   if (card.zone !== 'hand' || card.owner !== seat) return [error('ILLEGAL_SOURCE_ZONE', 'A Summon must be cast from your hand.')];
-  if (state.result || state.choice || state.priority !== seat || state.phase === 'setup' || state.phase === 'active' || state.phase === 'draw') {
+  if (state.result || state.choice || state.priority !== seat || state.phase === 'setup' || state.phase === 'active' || state.phase === 'draw' || state.phase === 'end') {
     return [error('WRONG_TIMING', 'Cast a Summon when you have priority in a player timing window.')];
   }
   const supported = new Set(['scorch', 'twin-embers', 'war-cry', 'ashen-verdict', 'final-spark', 'controlled-burn',
@@ -65,6 +65,7 @@ export function castSummon(state: MatchState, seat: Seat, source: ObjectId, targ
   const noTargets = new Set(['final-spark', 'rising-undertow']);
   if (singleTarget.has(definition.summonHandler) && targets.length !== 1 || requiresTwo && targets.length !== 2 ||
       noTargets.has(definition.summonHandler) && targets.length !== 0) return [error('WRONG_TARGET_COUNT', 'Choose the required targets for this Summon.')];
+  if (new Set(targets).size !== targets.length) return [error('DUPLICATE_TARGET', 'Choose a different object for each target.')];
   if (definition.summonHandler === 'stillwater') {
     if (!state.stack.some(item => item.source === targets[0])) return [error('ILLEGAL_TARGET', 'Choose a Summon currently on the stack.')];
   }

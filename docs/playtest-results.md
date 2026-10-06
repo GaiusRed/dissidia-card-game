@@ -4,8 +4,8 @@
 
 | Check | Result |
 |---|---|
-| Rule, format, setup, payment, combat, stack, storage, host, editor, and scenario tests | Passed; 72 tests across 22 files |
-| Strict TypeScript checks | Passed after the latest engine and host changes |
+| Rule, format, setup, payment, combat, stack, storage, host, editor, and scenario tests | Passed; 85 tests across 25 files |
+| Strict TypeScript checks | Passed with engine version 2 |
 | Rule import boundary | Passed; rules contain no forbidden platform dependencies |
 | Production build and service-worker generation | Passed; Phaser bundle is precached locally |
 | Playwright setup and phase controls | Passed |
@@ -15,6 +15,8 @@
 | Playwright offline reload | Passed in a new browser context with network disabled |
 | Coverage structure check | Passed; exact catalog/deck structure and linked test-file paths checked. Behavior gaps remain listed in `docs/rules-coverage.md`. |
 | Normal-start rules duels | Passed damage and deckout transcripts from `createMatch`; simultaneous defeat and complete card coverage remain open |
+| EX Burst and target checks | Passed for all three placeholder effects, ordered optional choices after the damage batch, no response window, save/restore, and delayed seven-damage outcome |
+| End Phase checkpoints | Passed trigger ordering, action restrictions, hand-size choice, damage clear, and temporary-effect cleanup |
 
 ## Release gate still open
 
