@@ -113,3 +113,23 @@ test('shows the real Commander beside the fan with a Commander Zone badge', asyn
   await expect(tray.locator('.card')).toHaveCount(1);
   await expect(tray.locator('.card')).toContainText(/Cinder Marshal|Tide Warden/);
 });
+
+test('casts the Commander directly from its tray without adding it to hand', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#match-seed').fill('2');
+  await page.getByRole('button', { name: 'New match' }).click();
+  await page.getByRole('button', { name: 'Take first turn' }).click();
+  await page.getByRole('button', { name: 'Keep', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep', exact: true }).click();
+  const handLabel = page.locator('.hand-zone > .zone-label');
+  const handBefore = (await handLabel.textContent())?.match(/HAND\s+(\d+)/)?.[1];
+  const commander = page.locator('.other-zone-tray .card');
+  await commander.click();
+  await page.getByRole('button', { name: /Cast Commander/ }).click();
+  await expect(page.locator('.battlefield')).toContainText('Cinder Marshal');
+  await expect(page.locator('.other-zone-tray .card')).toHaveCount(0);
+  await expect(page.locator('.commander-status')).toContainText('Cinder Marshal');
+  const handAfter = (await handLabel.textContent())?.match(/HAND\s+(\d+)/)?.[1];
+  expect(handBefore).toBe('6');
+  expect(handAfter).toBe('4');
+});

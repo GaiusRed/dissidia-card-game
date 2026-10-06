@@ -14,6 +14,7 @@
 | Playwright reload during an opening choice | Passed |
 | Playwright real-pointer cast from the card fan | Passed at 1280 × 720; viewport resized to 1920 × 1080 |
 | Playwright Commander tray | Passed; the Commander remains the same rules object, shows its Commander Zone badge, and displays the current tax-inclusive cost |
+| Playwright Commander cast | Passed; casting from the extension moves the same instance to the field, removes it from the tray, and does not add it to hand |
 | Playwright offline reload | Passed in a new browser context with network disabled |
 | Coverage structure check | Passed; exact catalog/deck structure and 25 linked test-file paths checked. Behavior gaps remain listed in `docs/rules-coverage.md`. |
 | Normal-start rules duels | Passed damage and deckout transcripts from `createMatch`; simultaneous defeat and complete card coverage remain open |
