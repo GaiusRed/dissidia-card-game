@@ -26,4 +26,12 @@ describe('match saves', () => {
     const save = createSave(reply.state, [{ id: 'end', expectedSeq: 0, seat: 0, intent: { kind: 'concede' } }], origin);
     expect(replaySave(origin, save, context)).toEqual(reply.state);
   });
+  it('rejects a tampered transcript that reuses an accepted command ID', () => {
+    const origin = fixture({}).state;
+    const command = { id: 'reused', expectedSeq: 0, seat: 0 as const, intent: { kind: 'concede' as const } };
+    const reply = applyCommand(origin, command, context);
+    if (!reply.ok) throw new Error('concession should be accepted');
+    const tampered = createSave(reply.state, [command, { ...command, expectedSeq: 1 }], origin);
+    expect(() => replaySave(origin, tampered, context)).toThrow('duplicate command ID');
+  });
 });

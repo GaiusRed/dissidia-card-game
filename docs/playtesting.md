@@ -24,6 +24,8 @@ The Vite development server supports local matches. For offline startup, run `np
 4. Each player chooses **Keep** or redraws once. A redraw asks for the order of all five cards going to the bottom of the deck.
 5. Use the priority button during each decision window. Passing priority and advancing the turn are separate steps.
 
+Use **Focused playtest scenario** to launch one of the six prepared positions for Commander tax, multiple EX Bursts, control limits, End Phase triggers, party/First Strike combat, or Commander destinations. Each scenario starts a separate match origin and saves like a normal duel.
+
 The local host controls both seats. The seat that owns the open choice or priority appears at the bottom for that action. **Inspect Player** changes the viewed seat without changing decision ownership.
 
 ## Play cards and make choices

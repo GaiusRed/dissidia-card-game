@@ -35,7 +35,6 @@ describe('Character casting', () => {
       { seat: 0, card: 'P-011R', zone: 'field' }, { seat: 0, card: 'P-012H', zone: 'field' },
       { seat: 0, card: 'P-013R', zone: 'field' }, { seat: 0, card: 'P-014R', zone: 'hand' },
     ] });
-    h.state.cards[h.object(0, 'P-013R').replace('o0', 'i0')]!.zone = 'field';
     const backup = h.object(0, 'P-014R');
     const sources = ['P-009C','P-010C'].map(card => h.object(0, card));
     const payment: Payment = { discard: [], dullBackups: sources, specialDiscard: null, dullSource: false, sacrificeSource: false, sourceElements: Object.fromEntries(sources.map(object => [object, 'Fire'])), spend: { Fire: 2 } };

@@ -18,6 +18,7 @@ Rule references point to [FFTCG Comprehensive Rules v3.3](fftcg-comprules-v3.3.p
 | Rule area | Scenario | Test | Status |
 |---|---|---|---|
 | End Phase checkpoints | Trigger ordering, action restrictions, discard to five, marked damage clear, temporary expiry | `tests/rules/end-phase.test.ts` | Partial; loops and all cleanup-trigger cases remain |
+| Scenario origins | Six deterministic, validated playtest positions with normal deck instances and invariants | `tests/scenarios/coverage.test.ts`, `tests/e2e/scenarios.spec.ts` | All six load and one launches in the browser; card behavior coverage remains separately partial |
 | Turns | Priority handoff, Main 1 → Attack → Main 2 → End, next-turn Active/Draw | `tests/rules/priority.test.ts`, `tests/rules/turn-phases.test.ts` | Partial; stack and End Phase abilities remain |
 | Commander | Tax, zone identity, owner-controlled replacement choice | `tests/rules/commander.test.ts`, `tests/rules/engine.test.ts` | Partial; replacement is integrated with combat and supported Summons |
 | Combat | One attack at a time, blocking, battle damage, First Strike, Forward break | `tests/rules/combat.test.ts` | Partial; full combat rules and allocation choices remain |

@@ -1,4 +1,4 @@
-import type { Command, MatchState, RuleEvent, Seat, Transition } from '../rules/types';
+import type { CardObject, Choice, Command, MatchState, RuleEvent, Seat, Transition } from '../rules/types';
 
 export interface MatchView {
   seq: number;
@@ -7,9 +7,10 @@ export interface MatchView {
   active: Seat;
   priority: Seat | null;
   decisionSeat: Seat | null;
-  choice: MatchState['choice'];
-  cards: MatchState['cards'];
+  choice: Omit<Choice, 'resume'> | null;
+  cards: Record<string, CardObject>;
   zones: MatchState['zones'];
+  deckCounts: Record<Seat, number>;
   field: string[];
   stackCards: string[];
   stack: MatchState['stack'];

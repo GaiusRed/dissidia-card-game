@@ -4,11 +4,12 @@
 
 | Check | Result |
 |---|---|
-| Rule, format, setup, payment, combat, stack, storage, host, editor, and scenario tests | Passed; 85 tests across 25 files |
+| Rule, format, setup, payment, combat, stack, storage, host, editor, and scenario tests | Passed; 90 tests across 26 files |
 | Strict TypeScript checks | Passed with engine version 2 |
 | Rule import boundary | Passed; rules contain no forbidden platform dependencies |
 | Production build and service-worker generation | Passed; Phaser bundle is precached locally |
 | Playwright setup and phase controls | Passed |
+| Playwright mulligan ordering and focused scenario launch/resume | Passed |
 | Playwright custom deck edit/save | Passed |
 | Playwright reload during an opening choice | Passed |
 | Playwright real-pointer cast from the card fan | Passed at 1280 × 720; viewport resized to 1920 × 1080 |

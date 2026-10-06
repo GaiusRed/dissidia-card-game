@@ -24,11 +24,24 @@ test('keeps contextual choices in the bottom-left at both desktop sizes', async 
   for (const viewport of [{ width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(viewport);
     await expect(dock).toBeVisible();
+    await expect.poll(() => dock.boundingBox()).not.toBeNull();
     const bounds = await dock.boundingBox();
     expect(bounds).not.toBeNull();
     expect(bounds!.x + bounds!.width).toBeLessThan(viewport.width * 0.30);
     expect(bounds!.y).toBeGreaterThan(viewport.height * 0.60);
   }
+});
+
+test('lets a player order the mulligan cards through the bottom-left choice dock', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New match' }).click();
+  await page.locator('[data-choice]').first().click();
+  await page.locator('[data-choice="redraw"]').click();
+  const choices = page.locator('[data-order-choice]');
+  await expect(choices).toHaveCount(5);
+  for (let index = 0; index < 5; index += 1) await choices.nth(index).click();
+  await expect(page.getByRole('button', { name: 'Confirm order' })).toBeEnabled();
+  await expect(page.getByText('Choose order 5/5')).toBeVisible();
 });
 
 test('pre-caches the release for a second load without network', async ({ page, context }) => {

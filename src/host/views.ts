@@ -3,18 +3,33 @@ import type { MatchView } from './protocol';
 
 export function projectView(state: MatchState, seat: Seat | null = null, log: RuleEvent[] = []): MatchView {
   const visible = JSON.parse(JSON.stringify(state)) as MatchState;
-  if (seat !== null) {
-    for (const owner of [0, 1] as const) {
-      if (owner === seat) continue;
-      // Keep counts and object identity for layout, while withholding concealed card identities.
-      for (const instance of visible.zones[owner].hand) visible.cards[instance]!.card = 'HIDDEN';
-      for (const instance of visible.zones[owner].deck) visible.cards[instance]!.card = 'HIDDEN';
+  const deckCounts: Record<Seat, number> = { 0: state.zones[0].deck.length, 1: state.zones[1].deck.length };
+  for (const owner of [0, 1] as const) {
+    // Deck order is never part of a client projection, including omniscient table views.
+    visible.zones[owner].deck = [];
+    const hiddenHand = seat !== null && seat !== owner;
+    if (hiddenHand) {
+      for (const instance of visible.zones[owner].hand) delete visible.cards[instance];
+      visible.zones[owner].hand = visible.zones[owner].hand.map((_, index) => `hidden-hand-${owner}-${index}`);
     }
+    for (const instance of state.zones[owner].deck) delete visible.cards[instance];
   }
+  const pending = visible.choice;
+  const choice = pending && (seat === null || pending.seat === seat)
+    ? (({ resume: _resume, ...publicChoice }) => publicChoice)(pending)
+    : pending ? { ...(({ resume: _resume, ...publicChoice }) => publicChoice)(pending),
+      reason: `Player ${pending.seat + 1} is making a private choice.`, options: [] } : null;
+  const safeLog = log.filter(item => {
+    if (seat === null) return true;
+    if (!['card.drawn', 'card.searched'].includes(item.type)) return true;
+    const data = item.data && typeof item.data === 'object' && !Array.isArray(item.data)
+      ? item.data as Record<string, unknown> : {};
+    return data.seat === seat;
+  });
   return {
     seq: visible.seq, turn: visible.turn, phase: visible.phase, active: visible.active,
     priority: visible.priority, decisionSeat: visible.choice?.seat ?? visible.priority,
-    choice: visible.choice, cards: visible.cards, zones: visible.zones, field: visible.field, log: JSON.parse(JSON.stringify(log)) as RuleEvent[],
+    choice, cards: visible.cards, zones: visible.zones, deckCounts, field: visible.field, log: JSON.parse(JSON.stringify(safeLog)) as RuleEvent[],
     stackCards: visible.stackCards, stack: visible.stack, commanders: visible.commanders,
     passes: visible.passes, result: visible.result, versions: visible.versions,
   };

@@ -302,7 +302,15 @@ function cardTile(state: MatchState, instance: string, selectable = true, playab
 function render(): void {
   if (!hostStarted() || screen === 'active-menu') {
     if (screen === 'deck-editor') { renderDeckEditor(); return; }
+    const priorScenario = root.querySelector<HTMLSelectElement>('#scenario-select')?.value;
+    const priorDeckOne = root.querySelector<HTMLSelectElement>('#deck-one')?.value;
+    const priorDeckTwo = root.querySelector<HTMLSelectElement>('#deck-two')?.value;
+    const priorSeed = root.querySelector<HTMLInputElement>('#match-seed')?.value;
     root.innerHTML = homeMenu([savedDecks.some(deck => deck.id === 'custom-0'), savedDecks.some(deck => deck.id === 'custom-1')], hostStarted());
+    if (priorScenario && root.querySelector(`#scenario-select option[value="${priorScenario}"]`)) root.querySelector<HTMLSelectElement>('#scenario-select')!.value = priorScenario;
+    if (priorDeckOne && root.querySelector(`#deck-one option[value="${priorDeckOne}"]`)) root.querySelector<HTMLSelectElement>('#deck-one')!.value = priorDeckOne;
+    if (priorDeckTwo && root.querySelector(`#deck-two option[value="${priorDeckTwo}"]`)) root.querySelector<HTMLSelectElement>('#deck-two')!.value = priorDeckTwo;
+    if (priorSeed !== undefined) root.querySelector<HTMLInputElement>('#match-seed')!.value = priorSeed;
     root.querySelector('#offline-status')!.textContent = offlineStatus === 'ready' ? 'Ready for offline play' : offlineStatus === 'error' ? 'Offline setup failed' : offlineStatus === 'update' ? 'An update is ready' : 'Preparing offline play';
     root.querySelector('#new-match')?.addEventListener('click', () => {
       const one = root.querySelector<HTMLSelectElement>('#deck-one')?.value;
@@ -313,6 +321,12 @@ function render(): void {
       const deckTwo = two === 'custom-two' ? savedDecks.find(deck => deck.id === 'custom-1')?.deck : two === 'fire' ? cinderCompany : tidalAssembly;
       host.start(Number.isSafeInteger(supplied) && supplied > 0 ? supplied : bytes[0]!, [deckOne ?? cinderCompany, deckTwo ?? tidalAssembly]);
       inspectedSeat = 0; screen = 'home'; render();
+    });
+    root.querySelector('#start-scenario')?.addEventListener('click', () => {
+      const id = root.querySelector<HTMLSelectElement>('#scenario-select')?.value;
+      if (!id) return;
+      host.startScenario(id);
+      inspectedSeat = 0; selectedObject = null; screen = 'home'; render();
     });
     root.querySelector('#resume-match')?.addEventListener('click', () => { screen = 'home'; render(); });
     root.querySelector('#edit-decks')?.addEventListener('click', () => {
@@ -359,7 +373,10 @@ function render(): void {
     selected.zone === 'field' && selected.controller === bottomSeat && selectedDef.type === 'Forward' && state.phase === 'attack' && state.active !== bottomSeat && state.combat?.step === 'block' && state.priority === bottomSeat && !state.combat.blocker
       ? '<button class="primary small" id="block-card">Block this attack</button>' : '',
   ].join('') : '';
-  const prompt = choice ? `<section class="choice-panel" aria-label="Choices"><div class="choice-copy"><span class="eyebrow">PLAYER ${choice.seat + 1} DECISION</span><strong>${choice.reason}</strong><small>${choice.kind === 'order' ? `Choose order ${orderSelection.length}/5` : ''}</small></div><div class="choice-actions">${choice.kind === 'order' ? `<button class="soft" id="clear-order">Clear</button><button class="primary small" id="confirm-order" ${orderSelection.length !== choice.min ? 'disabled' : ''}>Confirm order</button>` : choice.options.map(option => `<button class="${option.id === 'redraw' || option.id === 'second' ? 'soft' : 'primary small'}" data-choice="${option.id}">${option.label}</button>`).join('')}</div></section>` : '';
+  const prompt = choice ? `<section class="choice-panel" aria-label="Choices"><div class="choice-copy"><span class="eyebrow">PLAYER ${choice.seat + 1} DECISION</span><strong>${choice.reason}</strong><small>${choice.kind === 'order' ? `Choose order ${orderSelection.length}/${choice.max}` : ''}</small></div><div class="choice-actions">${choice.kind === 'order' ? `${choice.options.map((option, index) => {
+    const selectedIndex = orderSelection.indexOf(option.id);
+    return `<button class="${selectedIndex >= 0 ? 'primary small' : 'soft'}" data-order-choice="${option.id}">${selectedIndex >= 0 ? `${selectedIndex + 1}. ` : ''}${option.label}</button>`;
+  }).join('')}<button class="soft" id="clear-order">Clear</button><button class="primary small" id="confirm-order" ${orderSelection.length !== choice.min ? 'disabled' : ''}>Confirm order</button>` : choice.options.map(option => `<button class="${option.id === 'redraw' || option.id === 'second' ? 'soft' : 'primary small'}" data-choice="${option.id}">${option.label}</button>`).join('')}</div></section>` : '';
   root.innerHTML = `<header class="topbar"><a class="brand" href="#"><span class="brand-mark">D</span> DISSIDIA <small>PLAYTEST</small></a><div class="match-meta"><span>TURN ${state.turn || 'SETUP'}</span><b>·</b><span>${state.phase.toUpperCase()}</span><b>·</b><span>FIRST TO 7 DAMAGE</span><span class="offline-pill" id="offline-status">${offlineStatus === 'ready' ? 'OFFLINE READY' : offlineStatus === 'update' ? 'UPDATE READY' : offlineStatus === 'error' ? 'OFFLINE ERROR' : 'CACHING'}</span></div><div class="top-actions"><button class="top-button" id="inspect">Inspect Player ${other + 1}</button><button class="top-button" id="concede">Concede</button></div></header>
     <section class="table" aria-label="Game table"><div class="player-row opponent"><div class="player-info"><span class="avatar blue">${other + 1}</span><div><strong>Player ${other + 1}</strong><small>${state.active === other ? 'ACTIVE PLAYER' : 'WAITING'}</small></div><span class="damage">${top.damage.length}<small> / 7</small></span></div><div class="opponent-zones"><div class="zone-label">COMMANDER ZONE</div>${cardTile(state, state.commanders[other].instance, false)}<div class="opponent-hand" aria-label="Player ${other + 1} hand">${Array.from({length: top.hand.length}, () => '<span class="back"></span>').join('')}</div><span class="pile-count">${top.deck.length} DECK</span></div></div>
     <div class="center-table" id="battlefield-drop"><div class="center-caption">${state.stack.length ? `STACK · ${state.stack.length}` : 'BATTLEFIELD'}</div><div class="battlefield" aria-label="Battlefield">${state.field.length ? state.field.map(instance => { const card = state.cards[instance]!; const targetable = legalDraftTarget(state, card.object); return cardTile(state, instance, true, false, targetable); }).join('') : '<span class="empty-field">Summon a Forward or build your Backup line</span>'}</div><div class="stack-row">${state.stackCards.map(instance => { const card = state.cards[instance]!; return cardTile(state, instance, true, false, legalDraftTarget(state, card.object)); }).join('')}</div></div>
@@ -438,6 +455,11 @@ function render(): void {
     if (object && (state.priority === bottomSeat)) beginCast(state, bottomSeat, object);
   });
   root.querySelectorAll<HTMLElement>('[data-choice]').forEach(button => button.addEventListener('click', () => command(choice!.seat, { kind: 'answer', answer: { choice: choice!.id, selected: [button.dataset.choice!], amounts: {} } })));
+  root.querySelectorAll<HTMLElement>('[data-order-choice]').forEach(button => button.addEventListener('click', () => {
+    const id = button.dataset.orderChoice!;
+    orderSelection = orderSelection.includes(id) ? orderSelection.filter(value => value !== id) : [...orderSelection, id].slice(0, choice!.max);
+    render();
+  }));
   root.querySelector('#clear-order')?.addEventListener('click', () => { orderSelection = []; render(); });
   root.querySelector('#confirm-order')?.addEventListener('click', () => command(choice!.seat, { kind: 'answer', answer: { choice: choice!.id, selected: orderSelection, amounts: {} } }));
   drawTargeting();

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { cinderCompany, tidalAssembly } from '../../src/content/decks';
 import { LocalHost } from '../../src/host/local-host';
+import { projectView } from '../../src/host/views';
+import { fixture } from '../support/harness';
+import type { RuleEvent } from '../../src/rules/types';
 import 'fake-indexeddb/auto';
 
 describe('local host projections', () => {
@@ -11,8 +14,33 @@ describe('local host projections', () => {
     expect(Object.keys(state.cards)).toHaveLength(40);
     expect(state.choice?.kind).toBe('starting-player');
     const projection = host.view(0);
-    expect(projection.cards[state.zones[1].deck[0]!]!.card).toBe('HIDDEN');
+    expect(projection.cards[state.zones[1].deck[0]!]).toBeUndefined();
+    expect(projection.zones[0].deck).toEqual([]);
+    expect(projection.deckCounts[0]).toBe(state.zones[0].deck.length);
     expect(state.cards[state.zones[1].deck[0]!]!.card).not.toBe('HIDDEN');
+  });
+
+  it('withholds hidden card identities, deck order, private choices, and private log details', () => {
+    const h = fixture({ placements: [{ seat: 1, card: 'P-031R', zone: 'hand' }] });
+    const secret = Object.values(h.state.cards).find(card => card.owner === 1 && card.card === 'P-031R')!;
+    const opponentDeckOrder = [...h.state.zones[1].deck];
+    h.state.choice = { id: 'private-choice', seat: 1, kind: 'cards', reason: 'Search P-031R from deck.',
+      options: [{ id: secret.object, label: 'P-031R', object: secret.object }], min: 1, max: 1, allocation: null,
+      resume: { handler: 'private', step: 'choice', data: { card: 'P-031R' } } };
+    const log: RuleEvent[] = [
+      { id: 'draw-secret', type: 'card.drawn', data: { seat: 1, card: 'P-031R' } },
+      { id: 'draw-own', type: 'card.drawn', data: { seat: 0, card: 'P-003C' } },
+    ];
+    const view = projectView(h.state, 0, log);
+    const text = JSON.stringify(view);
+    expect(text).not.toContain('P-031R');
+    expect(text).not.toContain('"rng"');
+    expect(text).not.toContain('"resume"');
+    expect(text).not.toContain(opponentDeckOrder[0]!);
+    expect(view.choice?.options).toEqual([]);
+    expect(view.log.map(entry => entry.id)).toEqual(['draw-own']);
+    expect(view.deckCounts[1]).toBe(opponentDeckOrder.length);
+    expect(JSON.stringify(projectView(h.state, null))).not.toContain(opponentDeckOrder[0]!);
   });
 
   it('accepts only current-sequence commands and publishes accepted state changes', () => {
@@ -30,6 +58,25 @@ describe('local host projections', () => {
     const stale = host.submit({ id: 'stale', expectedSeq: 0, seat: choice.seat, intent: { kind: 'concede' } });
     expect(stale.ok).toBe(false);
     expect(notifications).toBe(1);
+  });
+  it('deduplicates identical command IDs and rejects conflicting reuse without changing state', () => {
+    const host = new LocalHost();
+    host.start(8);
+    const initial = host.getState();
+    const choice = initial.choice!;
+    const command = { id: 'idempotent-setup', expectedSeq: initial.seq, seat: choice.seat, intent: {
+      kind: 'answer' as const, answer: { choice: choice.id, selected: ['first'], amounts: {} },
+    } };
+    const first = host.submit(command);
+    expect(first.ok).toBe(true);
+    const afterFirst = JSON.stringify(host.getState());
+    const duplicate = host.submit(command);
+    expect(duplicate).toEqual(first);
+    expect(JSON.stringify(host.getState())).toBe(afterFirst);
+    const conflict = host.submit({ ...command, intent: { kind: 'concede' } });
+    expect(conflict.ok).toBe(false);
+    if (!conflict.ok) expect(conflict.error.code).toBe('COMMAND_ID_REUSED');
+    expect(JSON.stringify(host.getState())).toBe(afterFirst);
   });
   it('exports and restores a replay-verified saved match without accepting incompatible imports', async () => {
     const host = new LocalHost();
