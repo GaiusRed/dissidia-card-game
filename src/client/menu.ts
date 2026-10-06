@@ -1,0 +1,6 @@
+export function homeMenu(custom: [boolean, boolean] = [false, false], resume = false): string {
+  return `<section class="splash"><div class="crest">D</div><p class="eyebrow">OFFLINE PLAYTEST BUILD</p><h1>Dissidia<br><em>Card Game</em></h1><p class="intro">A two-seat local duel using the Commander Duel playtest format.</p>
+    <div class="deck-pickers"><label>PLAYER 1 DECK<select id="deck-one">${custom[0] ? '<option value="custom-one">Saved custom deck</option>' : ''}<option value="fire">Cinder Company · Fire</option><option value="water">Tidal Assembly · Water</option></select></label><label>PLAYER 2 DECK<select id="deck-two">${custom[1] ? '<option value="custom-two">Saved custom deck</option>' : ''}<option value="water">Tidal Assembly · Water</option><option value="fire">Cinder Company · Fire</option></select></label></div>
+    ${resume ? '<button class="primary" id="resume-match">Resume match</button>' : ''}<label class="seed-field">MATCH SEED<input id="match-seed" inputmode="numeric" placeholder="Random seed" /></label><button class="primary" id="new-match">New match</button><button class="soft" id="edit-decks">Deck editor</button>
+    <p class="subtle">Opus Placeholder · 19 cards + Commander · 7 damage</p><p class="offline-label" id="offline-status"></p></section>`;
+}
