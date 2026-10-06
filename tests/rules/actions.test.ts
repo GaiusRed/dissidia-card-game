@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import { describeCastAccess, legalActions } from '../../src/rules/actions';
+import { context, fixture } from '../support/harness';
+
+describe('read-only action availability', () => {
+  it('offers a hand card when timing, target, and complete CP are available', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-009C', zone: 'field' },
+      { seat: 0, card: 'P-015C', zone: 'hand' },
+      { seat: 1, card: 'P-023C', zone: 'field' },
+    ] });
+    const before = JSON.stringify(h.state);
+    const access = describeCastAccess(h.state, 0, context);
+    const scorch = access.find(item => item.source === h.object(0, 'P-015C'))!;
+    expect(scorch.canDeclare).toBe(true);
+    expect(scorch.displayedCost).toBe(1);
+    expect(legalActions(h.state, 0, context).some(action => action.source === scorch.source)).toBe(true);
+    expect(JSON.stringify(h.state)).toBe(before);
+  });
+
+  it('reports missing targets, insufficient CP, and timing as blocked reasons', () => {
+    const h = fixture({ phase: 'end', placements: [
+      { seat: 0, card: 'P-009C', zone: 'field' },
+      { seat: 0, card: 'P-015C', zone: 'hand' },
+      { seat: 0, card: 'P-019H', zone: 'hand' },
+    ] });
+    const access = describeCastAccess(h.state, 0, context);
+    const scorch = access.find(item => item.source === h.object(0, 'P-015C'))!;
+    const spark = access.find(item => item.source === h.object(0, 'P-019H'))!;
+    expect(scorch.canDeclare).toBe(false);
+    expect(scorch.blockedReasons.map(error => error.code)).toContain('NO_LEGAL_TARGET');
+    expect(spark.blockedReasons.map(error => error.code)).toContain('INSUFFICIENT_CP');
+    expect(spark.blockedReasons.map(error => error.code)).toContain('WRONG_TIMING');
+  });
+
+  it('includes Commander tax in displayed cost and offers no opponent actions', () => {
+    const h = fixture({ commanderCasts: { 0: 2 }, placements: [
+      { seat: 0, card: 'P-009C', zone: 'field' },
+    ] });
+    const commander = h.object(0, 'P-001L');
+    const item = describeCastAccess(h.state, 0, context).find(access => access.source === commander)!;
+    expect(item.displayedCost).toBe(7);
+    expect(item.commanderTax).toBe(4);
+    expect(legalActions(h.state, 1, context)).toEqual([]);
+  });
+
+  it('offers a Summon response to the player with priority during the opponent\'s attack', () => {
+    const h = fixture({ phase: 'attack', active: 0, priority: 1, placements: [
+      { seat: 1, card: 'P-029C', zone: 'field' },
+      { seat: 1, card: 'P-023C', zone: 'hand' },
+      { seat: 1, card: 'P-035C', zone: 'hand' },
+      { seat: 0, card: 'P-003C', zone: 'field' },
+    ] });
+    const response = describeCastAccess(h.state, 1, context).find(item => item.source === h.object(1, 'P-035C'))!;
+    expect(response.canDeclare).toBe(true);
+    expect(legalActions(h.state, 1, context).some(action => action.source === response.source)).toBe(true);
+  });
+});

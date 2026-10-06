@@ -50,7 +50,7 @@ export class LocalHost {
     if (!this.state) throw new Error('Start a match first.');
     return this.state;
   }
-  view(seat: Seat | null = null) { return projectView(this.getState(), seat, this.eventLog); }
+  view(seat: Seat | null = null) { return projectView(this.getState(), seat, this.eventLog, context); }
   submit(command: Command): Transition {
     const state = this.getState();
     const payload = JSON.stringify(command);

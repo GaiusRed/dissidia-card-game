@@ -1,4 +1,4 @@
-import type { CardObject, Choice, Command, MatchState, RuleEvent, Seat, Transition } from '../rules/types';
+import type { ActionOffer, CardObject, CastAccess, Choice, Command, MatchState, RuleEvent, Seat, Transition } from '../rules/types';
 
 export interface MatchView {
   seq: number;
@@ -18,6 +18,8 @@ export interface MatchView {
   passes: number;
   result: MatchState['result'];
   versions: MatchState['versions'];
+  castAccess: CastAccess[];
+  actions: ActionOffer[];
   log: RuleEvent[];
 }
 export interface CommandReply extends Extract<Transition, { ok: true }> { events: RuleEvent[] }

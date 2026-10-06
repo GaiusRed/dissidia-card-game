@@ -59,6 +59,25 @@ describe('local host projections', () => {
     expect(stale.ok).toBe(false);
     expect(notifications).toBe(1);
   });
+  it('projects current-seat cast access and legal actions without exposing deck state', () => {
+    const host = new LocalHost();
+    host.start(43);
+    for (let step = 0; step < 4 && host.getState().choice; step++) {
+      const state = host.getState();
+      const choice = state.choice!;
+      const selected = choice.kind === 'starting-player' ? 'first' : 'keep';
+      host.submit({ id: `project-setup-${step}`, expectedSeq: state.seq, seat: choice.seat, intent: {
+        kind: 'answer', answer: { choice: choice.id, selected: [selected], amounts: {} },
+      } });
+    }
+    const current = host.getState();
+    const access = host.view(current.priority).castAccess;
+    expect(access.every(item => item.source && item.blockedReasons)).toBe(true);
+    expect(host.view(current.priority).actions.some(action => action.kind === 'pass')).toBe(true);
+    const foreign = host.view(current.priority === 0 ? 1 : 0);
+    expect(foreign.actions).toEqual([]);
+    expect(JSON.stringify(foreign)).not.toContain(current.zones[current.priority].deck[0]!);
+  });
   it('deduplicates identical command IDs and rejects conflicting reuse without changing state', () => {
     const host = new LocalHost();
     host.start(8);
