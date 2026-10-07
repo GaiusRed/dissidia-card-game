@@ -7,7 +7,7 @@ import { homeMenu } from './client/menu';
 import { cinderCompany, tidalAssembly } from './content/decks';
 import { addEditorCard, changeEditorCommander, createDeckEditor, editorValidation, removeEditorCard } from './client/deck-editor';
 import { loadDecks, saveDeck, type SavedDeck } from './storage/decks';
-import type { MatchState, ObjectId, Payment, Seat } from './rules/types';
+import type { Element, MatchState, ObjectId, Payment, Seat } from './rules/types';
 
 class Playmat extends Phaser.Scene {
   constructor() { super('playmat'); }
@@ -16,13 +16,13 @@ class Playmat extends Phaser.Scene {
       this.children.removeAll();
       const { width, height } = this.scale;
       const g = this.add.graphics();
-      g.fillGradientStyle(0x151923, 0x151923, 0x0d1119, 0x0d1119, 1);
+      g.fillGradientStyle(0xf7f5ef, 0xf7f5ef, 0xeaf2fa, 0xeaf2fa, 1);
       g.fillRect(0, 0, width, height);
-      g.lineStyle(1, 0xc6a66d, 0.11);
+      g.lineStyle(1, 0x235d88, 0.11);
       g.strokeRoundedRect(width * 0.1, height * 0.17, width * 0.8, height * 0.58, 80);
-      g.lineStyle(1, 0xc6a66d, 0.06);
+      g.lineStyle(1, 0x235d88, 0.06);
       g.lineBetween(width * 0.14, height * 0.46, width * 0.86, height * 0.46);
-      g.fillStyle(0xc6a66d, 0.06);
+      g.fillStyle(0x9b6a25, 0.06);
       g.fillCircle(width / 2, height / 2, Math.min(width, height) * 0.15);
     };
     paint();
@@ -30,7 +30,7 @@ class Playmat extends Phaser.Scene {
   }
 }
 
-const game = new Phaser.Game({ type: Phaser.CANVAS, parent: 'game-canvas', backgroundColor: '#10131c', scene: [Playmat], scale: { mode: Phaser.Scale.RESIZE } });
+const game = new Phaser.Game({ type: Phaser.CANVAS, parent: 'game-canvas', backgroundColor: '#f7f5ef', scene: [Playmat], scale: { mode: Phaser.Scale.RESIZE } });
 const host = new LocalHost();
 const root = document.querySelector<HTMLElement>('#app')!;
 let inspectedSeat: Seat = 0;
@@ -46,9 +46,13 @@ let screen: 'home' | 'deck-editor' | 'active-menu' = 'home';
 let editorSeat: Seat = 0;
 let editorDeck = createDeckEditor(cinderCompany);
 let editorError = '';
+let editorQuery = '';
+let editorType: 'all' | 'Forward' | 'Backup' | 'Summon' = 'all';
+let editorElement: Element | 'all' = 'all';
 let savedDecks: SavedDeck[] = [];
 let offlineStatus: OfflineStatus = 'installing';
-let applyUpdate: (safeToUpdate: boolean) => void = () => {};
+let applyUpdate: () => void = () => {};
+let commandPending = false;
 
 function nameOf(state: MatchState, instance: string): string {
   const card = state.cards[instance]!;
@@ -70,17 +74,17 @@ function eventText(event: import('./rules/types').RuleEvent): string {
   return event.type.replaceAll('.', ' ').replaceAll('-', ' ');
 }
 function findObject(state: MatchState, object: ObjectId) { return Object.values(state.cards).find(card => card.object === object); }
-function makePayment(state: MatchState, seat: Seat, source: ObjectId, cost: number): Payment | null {
+function makePayment(state: MatchState, seat: Seat, source: ObjectId, cost: number, requiredElements?: Element[], excluded: string[] = []): Payment | null {
   const sourceCard = findObject(state, source);
   if (!sourceCard) return null;
-  const identity = opusPh[sourceCard.card]?.elements ?? [];
+  const identity = requiredElements ?? opusPh[sourceCard.card]?.elements ?? [];
   const colorlessCard = identity.some(element => element === 'Light' || element === 'Dark');
   const candidates: { object: string; element: (typeof identity)[number]; amount: number; discard: boolean }[] = [];
   for (const instance of state.field) {
     const card = state.cards[instance]!;
     const def = opusPh[card.card];
     const element = def?.elements.find(e => colorlessCard || identity.includes(e));
-    if (card.object !== source && card.controller === seat && !card.dull && def?.type === 'Backup' && element) {
+    if (card.object !== source && !excluded.includes(card.object) && card.controller === seat && !card.dull && def?.type === 'Backup' && element) {
       candidates.push({ object: card.object, element, amount: 1, discard: false });
     }
   }
@@ -88,7 +92,7 @@ function makePayment(state: MatchState, seat: Seat, source: ObjectId, cost: numb
     const card = state.cards[instance]!;
     const def = opusPh[card.card];
     const element = def?.elements.find(e => identity.includes(e));
-    if (card.object !== source && def && !def.elements.some(e => e === 'Light' || e === 'Dark') && (colorlessCard ? !!def.elements[0] : !!element)) {
+    if (card.object !== source && !excluded.includes(card.object) && def && !def.elements.some(e => e === 'Light' || e === 'Dark') && (colorlessCard ? !!def.elements[0] : !!element)) {
       candidates.push({ object: card.object, element: colorlessCard ? def.elements[0]! : element!, amount: 2, discard: true });
     }
   }
@@ -116,11 +120,20 @@ function makePayment(state: MatchState, seat: Seat, source: ObjectId, cost: numb
     sourceElements: Object.fromEntries(selected.map(item => [item.object, item.element])), spend,
   };
 }
-function command(seat: Seat, intent: Parameters<LocalHost['submit']>[0]['intent']): void {
+async function command(seat: Seat, intent: Parameters<LocalHost['submit']>[0]['intent']): Promise<void> {
+  if (commandPending) return;
+  commandPending = true;
+  root.inert = true;
   const state = host.getState();
-  const reply = host.submit({ id: crypto.randomUUID(), expectedSeq: state.seq, seat, intent });
-  notice = reply.ok ? '' : reply.error.message;
-  if (reply.ok) { selectedObject = null; orderSelection = []; }
+  try {
+    const reply = await host.submit({ id: crypto.randomUUID(), expectedSeq: state.seq, seat, intent });
+    notice = reply.ok ? '' : reply.error.message;
+    if (reply.ok) { selectedObject = null; orderSelection = []; }
+  } finally {
+    commandPending = false;
+    root.inert = false;
+    render();
+  }
 }
 function cast(state: MatchState, seat: Seat, object: ObjectId): void {
   const card = findObject(state, object);
@@ -132,26 +145,24 @@ function cast(state: MatchState, seat: Seat, object: ObjectId): void {
   if (!payment) { notice = `Not enough eligible CP to pay ${cost}. Select active Backups or discard matching cards.`; render(); return; }
   command(seat, { kind: 'cast', source: object, targets: [], mode: null, payment });
 }
-function requiredTargets(handler: string | null): number {
-  if (['scorch', 'return-tide', 'war-cry', 'ashen-verdict', 'guarding-current', 'shape-tide', 'borrowed-banner', 'controlled-burn', 'stillwater'].includes(handler ?? '')) return 1;
-  if (handler === 'twin-embers') return 2;
-  return 0;
+function requiredTargets(cardNumber: string): number {
+  return opusPh[cardNumber]?.summonTarget?.min ?? 0;
 }
 function beginCast(state: MatchState, seat: Seat, object: ObjectId): void {
   const card = findObject(state, object);
   if (!card) return;
   const def = opusPh[card.card];
   if (def?.type !== 'Summon') { cast(state, seat, object); return; }
-  if (!new Set(['scorch', 'twin-embers', 'war-cry', 'ashen-verdict', 'final-spark', 'controlled-burn', 'return-tide', 'stillwater', 'guarding-current', 'shape-tide', 'borrowed-banner', 'rising-undertow']).has(def.summonHandler ?? '')) {
+  if (!def.summonTarget) {
     notice = 'This placeholder Summon has no implemented effect yet.'; render(); return;
   }
-  const needed = requiredTargets(def.summonHandler);
+  const needed = requiredTargets(def.number);
   if (needed === 0) { castSummon(state, seat, object, []); return; }
   castingSource = object;
   targetSelection = [];
   selectedMode = null;
   selectedObject = object;
-  notice = def.summonHandler === 'controlled-burn' ? 'Choose a mode: break a Backup of cost 2 or less, or remove a Forward.' : `Choose ${needed} target${needed > 1 ? 's' : ''} for ${def.name}.`;
+  notice = def.summonTarget.modes?.length ? 'Choose a mode before selecting targets.' : `Choose ${needed} target${needed > 1 ? 's' : ''} for ${def.name}.`;
   render();
 }
 function castSummon(state: MatchState, seat: Seat, object: ObjectId, targets: ObjectId[]): void {
@@ -164,21 +175,10 @@ function castSummon(state: MatchState, seat: Seat, object: ObjectId, targets: Ob
   castingSource = null; targetSelection = []; selectedMode = null;
   command(seat, { kind: 'cast', source: object, targets, mode, payment });
 }
-function abilityCost(handler: string): { cost: number; element: 'Fire' | 'Water' | null; special: string | null; sacrifice: boolean } | null {
-  const values: Record<string, { cost: number; element: 'Fire' | 'Water' | null; special: string | null; sacrifice: boolean }> = {
-    'forge-apprentice-buff': { cost: 0, element: null, special: null, sacrifice: false },
-    'wave-apprentice-activate': { cost: 0, element: null, special: null, sacrifice: false },
-    'recovery-clerk-bottom': { cost: 1, element: 'Water', special: null, sacrifice: false },
-    'ember-medic-recover': { cost: 1, element: 'Fire', special: null, sacrifice: true },
-    'cinder-marshal-special': { cost: 1, element: 'Fire', special: 'Cinder Marshal', sacrifice: false },
-    'tide-warden-special': { cost: 1, element: 'Water', special: 'Tide Warden', sacrifice: false },
-  };
-  return values[handler] ?? null;
-}
 function beginAbility(state: MatchState, source: ObjectId, abilityId: string): void {
   const sourceCard = findObject(state, source);
   const ability = sourceCard ? opusPh[sourceCard.card]?.abilities.find(item => item.id === abilityId) : undefined;
-  if (!sourceCard || !ability || !abilityCost(ability.handler)) { notice = 'This placeholder ability is not implemented yet.'; render(); return; }
+  if (!sourceCard || !ability?.activation) { notice = 'This placeholder ability is not implemented yet.'; render(); return; }
   abilityDraft = { source, abilityId };
   castingSource = null; selectedObject = source; targetSelection = [];
   notice = `Choose a target for ${ability.text}`;
@@ -188,22 +188,24 @@ function sendAbility(state: MatchState, seat: Seat, targets: ObjectId[]): void {
   if (!abilityDraft) return;
   const source = findObject(state, abilityDraft.source);
   const ability = source ? opusPh[source.card]?.abilities.find(item => item.id === abilityDraft!.abilityId) : undefined;
-  const cost = ability ? abilityCost(ability.handler) : null;
-  if (!source || !ability || !cost) return;
-  const payment = makePayment(state, seat, source.object, cost.cost);
-  if (!payment) { notice = `Not enough matching CP to pay ${cost.cost}.`; render(); return; }
-  payment.dullSource = true;
-  payment.sacrificeSource = cost.sacrifice;
-  if (cost.special) {
-    const special = state.zones[seat].hand.map(instance => state.cards[instance]!).find(card => card.object !== source.object && opusPh[card.card]?.name === cost.special);
-    if (!special) { notice = `A second ${cost.special} in hand is required for this Special Ability.`; render(); return; }
+  const activation = ability?.activation;
+  if (!source || !ability || !activation) return;
+  const special = activation.specialDiscardName
+    ? state.zones[seat].hand.map(instance => state.cards[instance]!).find(card => card.object !== source.object && opusPh[card.card]?.name === activation.specialDiscardName)
+    : undefined;
+  if (activation.specialDiscardName && !special) { notice = `A second ${activation.specialDiscardName} in hand is required for this Special Ability.`; render(); return; }
+  const payment = makePayment(state, seat, source.object, activation.cost, activation.elements, special ? [special.object] : []);
+  if (!payment) { notice = `Not enough matching CP to pay ${activation.cost}.`; render(); return; }
+  payment.dullSource = activation.dullSource;
+  payment.sacrificeSource = activation.sacrificeSource;
+  if (special) {
     payment.specialDiscard = special.object;
   }
   const draft = abilityDraft;
   abilityDraft = null; targetSelection = [];
   command(seat, { kind: 'activate', source: draft.source, ability: draft.abilityId, targets, payment });
 }
-function legalDraftTarget(state: MatchState, targetObject: ObjectId): boolean {
+function legalDraftTarget(state: MatchState, targetObject: ObjectId, seat: Seat = inspectedSeat): boolean {
   if ((!castingSource && !abilityDraft) || targetSelection.includes(targetObject)) return false;
   const sourceObject = castingSource ?? abilityDraft!.source;
   const source = findObject(state, sourceObject);
@@ -214,24 +216,22 @@ function legalDraftTarget(state: MatchState, targetObject: ObjectId): boolean {
     const definition = opusPh[source.card]!;
     const ability = definition.abilities.find(item => item.id === abilityDraft!.abilityId);
     if (!ability) return false;
-    const abilityHandler = ability.handler;
-    if (abilityHandler === 'recovery-clerk-bottom' || abilityHandler === 'ember-medic-recover') {
-      return target.zone === 'break' && target.owner === source.owner &&
-        (abilityHandler === 'recovery-clerk-bottom' || opusPh[target.card]?.type === 'Forward');
-    }
-    if (target.zone !== 'field' || opusPh[target.card]?.type !== 'Forward') return false;
-    return abilityHandler !== 'forge-apprentice-buff' || opusPh[target.card]!.elements.includes('Fire');
+    const rule = ability.activation?.target;
+    if (!rule || !rule.zones.includes(target.zone) || !rule.types.includes(opusPh[target.card]?.type ?? 'Summon')) return false;
+    if (rule.owner === 'you' && target.owner !== seat || rule.controller === 'you' && target.controller !== seat || rule.controller === 'opponent' && target.controller === seat) return false;
+    if (rule.dull !== null && target.dull !== rule.dull) return false;
+    return rule.elements.length === 0 || rule.elements.some(element => opusPh[target.card]!.elements.includes(element));
   }
-  if (handler === 'stillwater') return target.zone === 'stack' && state.stack.some(item => item.source === targetObject);
-  if (target.zone !== 'field') return false;
   const definition = opusPh[target.card];
-  if (!definition) return false;
-  if (handler === 'borrowed-banner') return target.controller !== source.owner && (definition.type === 'Forward' || definition.type === 'Backup');
-  if (handler === 'controlled-burn') return selectedMode === 'backup'
-    ? definition.type === 'Backup' && definition.cost <= 2
-    : selectedMode === 'forward' && definition.type === 'Forward';
-  if (handler === 'ashen-verdict') return definition.type === 'Forward' && target.dull;
-  return definition.type === 'Forward';
+  const rule = opusPh[source.card]?.summonTarget;
+  if (rule?.modes?.length && selectedMode === null) return false;
+  const mode = rule?.modes?.find(item => item.id === selectedMode);
+  const types = mode?.types ?? rule?.types ?? [];
+  const maxCost = mode?.maxCost ?? rule?.maxCost;
+  if (!definition || !rule || !rule.zones.includes(target.zone) || !types.includes(definition.type)) return false;
+  if (rule.controller === 'you' && target.controller !== seat || rule.controller === 'opponent' && target.controller === seat) return false;
+  if (rule.dull !== null && target.dull !== rule.dull || maxCost !== undefined && definition.cost > maxCost) return false;
+  return true;
 }
 function drawTargeting(): void {
   root.querySelector('.targeting-overlay')?.remove();
@@ -253,14 +253,29 @@ function drawTargeting(): void {
 }
 
 function renderDeckEditor(): void {
-  const chosenCommander = opusPh[editorDeck.commander]!;
   const pool = Object.values(opusPh).filter(card => card.type !== 'Summon' || card.summonHandler !== null)
-    .filter(card => card.rarity !== 'L' || card.number === editorDeck.commander)
-    .filter(card => !card.elements.some(element => element !== 'Light' && element !== 'Dark') ||
-      card.elements.some(element => chosenCommander.elements.includes(element)));
+    .filter(card => editorQuery.trim() === '' || `${card.name} ${card.number}`.toLowerCase().includes(editorQuery.trim().toLowerCase()))
+    .filter(card => editorType === 'all' || card.type === editorType)
+    .filter(card => editorElement === 'all' || card.elements.includes(editorElement));
   const commanderOptions = Object.values(opusPh).filter(card => card.type === 'Forward' && card.rarity === 'L');
   const errors = editorValidation(editorDeck);
-  root.innerHTML = `<section class="editor-page"><header class="editor-header"><button class="top-button" id="editor-back">← Menu</button><div><p class="eyebrow">COMMANDER DUEL · OPUS PLACEHOLDER</p><h2>Deck editor</h2></div><span class="deck-count">${editorDeck.main.length} / 19</span></header><div class="editor-toolbar"><label>PLAYER <select id="editor-seat"><option value="0" ${editorSeat === 0 ? 'selected' : ''}>1</option><option value="1" ${editorSeat === 1 ? 'selected' : ''}>2</option></select></label><label>COMMANDER <select id="editor-commander">${commanderOptions.map(card => `<option value="${card.number}" ${editorDeck.commander === card.number ? 'selected' : ''}>${card.name} · ${card.elements.join('/')}</option>`).join('')}</select></label><button class="primary small" id="save-deck" ${errors.length ? 'disabled' : ''}>Save for Player ${editorSeat + 1}</button></div><p class="editor-error" role="status">${editorError || errors.map(error => error.message).join(' ')}</p><div class="editor-columns"><section><h3>Main deck <small>${editorDeck.main.length}/19</small></h3><div class="editor-list">${editorDeck.main.map(number => { const card = opusPh[number]!; return `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong>${card.name}</strong><small>${number} · ${card.type} · ${card.cost}</small><button data-remove="${number}" aria-label="Remove ${card.name}">−</button></div>`; }).join('') || '<p class="subtle">Add cards from the catalog.</p>'}</div></section><section><h3>Card catalog <small>${pool.length} legal cards</small></h3><div class="editor-list">${pool.map(card => `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong>${card.name}</strong><small>${card.number} · ${card.type} · ${card.cost}</small><button data-add="${card.number}" aria-label="Add ${card.name}" ${editorDeck.main.includes(card.number) || editorDeck.main.length >= 19 ? 'disabled' : ''}>+</button></div>`).join('')}</div></section></div></section>`;
+  root.innerHTML = `<section class="editor-page"><header class="editor-header"><button class="top-button" id="editor-back">← Menu</button><div><p class="eyebrow">COMMANDER DUEL · OPUS PLACEHOLDER</p><h2>Deck editor</h2></div><span class="deck-count">${editorDeck.main.length} / 19</span></header><div class="editor-toolbar"><label>PLAYER <select id="editor-seat"><option value="0" ${editorSeat === 0 ? 'selected' : ''}>1</option><option value="1" ${editorSeat === 1 ? 'selected' : ''}>2</option></select></label><label>COMMANDER <select id="editor-commander">${commanderOptions.map(card => `<option value="${card.number}" ${editorDeck.commander === card.number ? 'selected' : ''}>${card.name} · ${card.elements.join('/')}</option>`).join('')}</select></label><button class="primary small" id="save-deck" ${errors.length ? 'disabled' : ''}>Save for Player ${editorSeat + 1}</button></div><p class="editor-error" role="status">${editorError || errors.map(error => error.message).join(' ')}</p><div class="editor-toolbar editor-filters"><label>SEARCH <input id="editor-search" value="${editorQuery.replaceAll('"', '&quot;')}" placeholder="Card name or number" /></label><label>TYPE <select id="editor-type"><option value="all">All types</option><option>Forward</option><option>Backup</option><option>Summon</option></select></label><label>ELEMENT <select id="editor-element"><option value="all">All elements</option><option>Fire</option><option>Ice</option><option>Wind</option><option>Earth</option><option>Lightning</option><option>Water</option><option>Light</option><option>Dark</option></select></label></div><div class="editor-columns"><section><h3>Main deck <small>${editorDeck.main.length}/19</small></h3><div class="editor-list">${editorDeck.main.map(number => { const card = opusPh[number]!; return `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong>${card.name}</strong><small>${number} · ${card.type} · ${card.cost}</small><button data-remove="${number}" aria-label="Remove ${card.name}">−</button></div>`; }).join('') || '<p class="subtle">Add cards from the catalog.</p>'}</div></section><section><h3>Card catalog <small>${pool.length} matching cards</small></h3><div class="editor-list">${pool.map(card => `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong>${card.name}</strong><small>${card.number} · ${card.type} · ${card.cost}</small><button data-add="${card.number}" aria-label="Add ${card.name}" ${editorDeck.main.includes(card.number) || editorDeck.main.length >= 19 ? 'disabled' : ''}>+</button></div>`).join('')}</div></section></div></section>`;
+  const typeControl = root.querySelector<HTMLSelectElement>('#editor-type');
+  if (typeControl) typeControl.value = editorType;
+  const elementControl = root.querySelector<HTMLSelectElement>('#editor-element');
+  if (elementControl) elementControl.value = editorElement;
+  root.querySelector<HTMLInputElement>('#editor-search')?.addEventListener('input', event => {
+    editorQuery = (event.currentTarget as HTMLInputElement).value;
+    renderDeckEditor();
+  });
+  root.querySelector<HTMLSelectElement>('#editor-type')?.addEventListener('change', event => {
+    editorType = (event.currentTarget as HTMLSelectElement).value as typeof editorType;
+    renderDeckEditor();
+  });
+  root.querySelector<HTMLSelectElement>('#editor-element')?.addEventListener('change', event => {
+    editorElement = (event.currentTarget as HTMLSelectElement).value as typeof editorElement;
+    renderDeckEditor();
+  });
   root.querySelector('#editor-back')?.addEventListener('click', () => { screen = 'home'; render(); });
   root.querySelector('#editor-seat')?.addEventListener('change', event => {
     editorSeat = Number((event.currentTarget as HTMLSelectElement).value) as Seat;
@@ -270,8 +285,8 @@ function renderDeckEditor(): void {
   root.querySelector('#editor-commander')?.addEventListener('change', event => {
     const number = (event.currentTarget as HTMLSelectElement).value;
     const issues = changeEditorCommander(editorDeck, number);
-    if (issues.length) editorError = issues.map(error => error.message).join(' ');
-    else { editorDeck.commander = number; editorError = ''; }
+    editorDeck = { ...editorDeck, commander: number };
+    editorError = issues.map(error => error.message).join(' ');
     renderDeckEditor();
   });
   root.querySelectorAll<HTMLElement>('[data-add]').forEach(button => button.addEventListener('click', () => {
@@ -329,6 +344,10 @@ function render(): void {
       inspectedSeat = 0; selectedObject = null; screen = 'home'; render();
     });
     root.querySelector('#resume-match')?.addEventListener('click', () => { screen = 'home'; render(); });
+    root.querySelector('#abandon-match')?.addEventListener('click', () => {
+      if (!window.confirm('Abandon this match and remove its saved progress?')) return;
+      void host.abandon().then(() => { screen = 'home'; notice = ''; render(); });
+    });
     root.querySelector('#edit-decks')?.addEventListener('click', () => {
       editorSeat = 0;
       editorDeck = createDeckEditor(savedDecks.find(deck => deck.id === 'custom-0')?.deck ?? cinderCompany);
@@ -336,7 +355,12 @@ function render(): void {
     });
     if (offlineStatus === 'update') {
       root.querySelector('#new-match')?.insertAdjacentHTML('afterend', '<button class="soft" id="apply-update">Install update</button>');
-      root.querySelector('#apply-update')?.addEventListener('click', () => applyUpdate(true));
+      root.querySelector('#apply-update')?.addEventListener('click', () => {
+        void host.requestUpdate().then(result => {
+          if (!result.allowed) { notice = result.reason ?? 'Update is not available yet.'; render(); return; }
+          applyUpdate();
+        });
+      });
     }
     return;
   }
@@ -364,17 +388,17 @@ function render(): void {
   }).join('');
   const draftedAbility = abilityDraft && findObject(state, abilityDraft.source)
     ? opusPh[findObject(state, abilityDraft.source)!.card]?.abilities.find(ability => ability.id === abilityDraft!.abilityId) : undefined;
-  const breakTargets = draftedAbility && ['recovery-clerk-bottom', 'ember-medic-recover'].includes(draftedAbility.handler)
+  const breakTargets = draftedAbility?.activation?.target.zones.includes('break')
     ? `<section class="break-targets" aria-label="Break Zone targets"><span class="zone-label">CHOOSE FROM BREAK ZONE</span>${bottom.break.map(instance => cardTile(state, instance, true, false, legalDraftTarget(state, state.cards[instance]!.object))).join('')}</section>` : '';
   const selectedActions = selected && selectedDef ? [
     (selected.zone === 'hand' || selected.zone === 'commander') && (selected.controller === bottomSeat || selected.owner === bottomSeat) && selectedDef.type !== 'Summon'
       ? `<button class="primary small" id="play-card">${selected.zone === 'commander' ? `Cast Commander · ${selectedDef.cost + state.commanders[bottomSeat].casts * 2} CP` : `Cast · ${selectedDef.cost} CP`}</button>` : '',
-    (selected.zone === 'hand') && selectedDef.type === 'Summon' && new Set(['scorch', 'twin-embers', 'war-cry', 'ashen-verdict', 'final-spark', 'controlled-burn', 'return-tide', 'stillwater', 'guarding-current', 'shape-tide', 'borrowed-banner', 'rising-undertow']).has(selectedDef.summonHandler ?? '')
+    (selected.zone === 'hand') && selectedDef.type === 'Summon' && !!selectedDef.summonTarget
       ? `<button class="primary small" id="play-summon">Cast Summon · ${selectedDef.cost} CP</button>` : '',
-    castingSource === selected.object && selectedDef.summonHandler === 'controlled-burn' && !selectedMode
-      ? '<button class="soft small" data-mode="backup">Break Backup</button><button class="soft small" data-mode="forward">Remove Forward</button>' : '',
-    selected.zone === 'field' && selected.controller === bottomSeat ? selectedDef.abilities.filter(ability => abilityCost(ability.handler) && ability.kind !== 'auto' && actionView.actions.some(action => action.kind === 'activate' && action.source === selected.object && action.ability === ability.id))
-      .map(ability => `<button class="soft small" data-ability="${ability.id}" ${selected.dull ? 'disabled' : ''}>${ability.kind === 'special' ? 'Special · ' : ''}${ability.id.includes('forge') ? 'Boost Forward' : ability.id.includes('wave') ? 'Activate Forward' : 'Special Ability'}</button>`).join('') : '',
+    castingSource === selected.object && !!selectedDef.summonTarget?.modes?.length && !selectedMode
+      ? selectedDef.summonTarget.modes.map(mode => `<button class="soft small" data-mode="${mode.id}">${mode.label}</button>`).join('') : '',
+    selected.zone === 'field' && selected.controller === bottomSeat ? selectedDef.abilities.filter(ability => ability.activation && ability.kind !== 'auto' && actionView.actions.some(action => action.kind === 'activate' && action.source === selected.object && action.ability === ability.id))
+      .map(ability => `<button class="soft small" data-ability="${ability.id}" ${selected.dull ? 'disabled' : ''}>${ability.kind === 'special' ? 'Special · ' : ''}${ability.text}</button>`).join('') : '',
     selected.zone === 'field' && selected.controller === bottomSeat && selectedDef.type === 'Forward' && state.phase === 'attack' && state.active === bottomSeat && state.priority === bottomSeat && !state.combat
       ? '<button class="primary small" id="attack-card">Attack with this Forward</button>' : '',
     selected.zone === 'field' && selected.controller === bottomSeat && selectedDef.type === 'Forward' && state.phase === 'attack' && state.active !== bottomSeat && state.combat?.step === 'block' && state.priority === bottomSeat && !state.combat.blocker
@@ -417,18 +441,18 @@ function render(): void {
   root.querySelector('#play-card')?.addEventListener('click', () => selected && beginCast(state, bottomSeat, selected.object));
   root.querySelector('#play-summon')?.addEventListener('click', () => selected && beginCast(state, bottomSeat, selected.object));
   root.querySelector('#cancel-draft')?.addEventListener('click', () => { castingSource = null; abilityDraft = null; targetSelection = []; selectedMode = null; notice = ''; render(); });
-  root.querySelectorAll<HTMLElement>('[data-mode]').forEach(button => button.addEventListener('click', () => { selectedMode = button.dataset.mode!; notice = `Choose a ${selectedMode === 'backup' ? 'Backup' : 'Forward'} for Controlled Burn.`; render(); }));
+  root.querySelectorAll<HTMLElement>('[data-mode]').forEach(button => button.addEventListener('click', () => { selectedMode = button.dataset.mode!; notice = 'Choose a legal target for this mode.'; render(); }));
   root.querySelectorAll<HTMLElement>('[data-ability]').forEach(button => button.addEventListener('click', () => beginAbility(state, selected!.object, button.dataset.ability!)));
   root.querySelector('#attack-card')?.addEventListener('click', () => selected && command(bottomSeat, { kind: 'attack', members: [selected.object] }));
   root.querySelector('#block-card')?.addEventListener('click', () => selected && command(bottomSeat, { kind: 'block', blocker: selected.object }));
   root.querySelectorAll<HTMLElement>('[data-card]').forEach(button => button.addEventListener('click', () => {
     const object = button.dataset.card!;
     const target = findObject(state, object);
-    if ((castingSource || abilityDraft) && legalDraftTarget(state, object)) {
+    if ((castingSource || abilityDraft) && legalDraftTarget(state, object, bottomSeat)) {
       const sourceId = castingSource ?? abilityDraft!.source;
       const source = findObject(state, sourceId)!;
       targetSelection = [...targetSelection, object];
-      const needed = abilityDraft ? 1 : requiredTargets(opusPh[source.card]!.summonHandler);
+      const needed = abilityDraft ? 1 : requiredTargets(source.card);
       if (targetSelection.length >= needed) {
         if (abilityDraft) sendAbility(state, bottomSeat, targetSelection);
         else castSummon(state, bottomSeat, sourceId, targetSelection);

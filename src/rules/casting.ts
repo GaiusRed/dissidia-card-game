@@ -2,6 +2,7 @@ import { commitPayment, validatePayment } from './payment';
 import type { EngineContext, MatchState, ObjectId, Payment, RuleError, Seat } from './types';
 import { moveCard } from './zones';
 import { scheduleEntryAbilities } from './triggers';
+import { legalSummonTargets } from './targets';
 
 const error = (code: string, message: string): RuleError => ({ code, message });
 export function castCharacter(state: MatchState, seat: Seat, source: ObjectId, payment: Payment, context: EngineContext): RuleError[] {
@@ -57,38 +58,18 @@ export function castSummon(state: MatchState, seat: Seat, source: ObjectId, targ
   if (state.result || state.choice || state.priority !== seat || state.phase === 'setup' || state.phase === 'active' || state.phase === 'draw' || state.phase === 'end') {
     return [error('WRONG_TIMING', 'Cast a Summon when you have priority in a player timing window.')];
   }
-  const supported = new Set(['scorch', 'twin-embers', 'war-cry', 'ashen-verdict', 'final-spark', 'controlled-burn',
-    'return-tide', 'stillwater', 'guarding-current', 'shape-tide', 'borrowed-banner', 'rising-undertow']);
-  if (!supported.has(definition.summonHandler)) return [error('UNSUPPORTED_SUMMON', 'This Summon handler has not been implemented.')];
-  const singleTarget = new Set(['scorch', 'war-cry', 'ashen-verdict', 'return-tide', 'guarding-current', 'shape-tide', 'borrowed-banner', 'stillwater', 'controlled-burn']);
-  const requiresTwo = definition.summonHandler === 'twin-embers';
-  const noTargets = new Set(['final-spark', 'rising-undertow']);
-  if (singleTarget.has(definition.summonHandler) && targets.length !== 1 || requiresTwo && targets.length !== 2 ||
-      noTargets.has(definition.summonHandler) && targets.length !== 0) return [error('WRONG_TARGET_COUNT', 'Choose the required targets for this Summon.')];
-  if (new Set(targets).size !== targets.length) return [error('DUPLICATE_TARGET', 'Choose a different object for each target.')];
-  if (definition.summonHandler === 'stillwater') {
-    if (!state.stack.some(item => item.source === targets[0])) return [error('ILLEGAL_TARGET', 'Choose a Summon currently on the stack.')];
+  if (state.combat?.step === 'firstStrike' || state.combat?.step === 'normalDamage') {
+    return [error('WRONG_TIMING', 'Cards cannot be cast during the First Strike checkpoint.')];
   }
-  if (definition.summonHandler === 'controlled-burn' && mode !== 'backup' && mode !== 'forward') return [error('INVALID_MODE', 'Choose whether Controlled Burn breaks a Backup or removes a Forward.')];
-  if (definition.summonHandler === 'scorch' || definition.summonHandler === 'twin-embers' || definition.summonHandler === 'war-cry' ||
-      definition.summonHandler === 'ashen-verdict' || definition.summonHandler === 'return-tide' || definition.summonHandler === 'guarding-current' ||
-      definition.summonHandler === 'shape-tide' || definition.summonHandler === 'borrowed-banner' || definition.summonHandler === 'controlled-burn') {
-    const targetCards = targets.map(target => Object.values(state.cards).find(item => item.object === target));
-    if (targetCards.some(target => !target || target.zone !== 'field')) {
-      return [error('ILLEGAL_TARGET', 'Choose a legal card currently on the field.')];
-    }
-    if (definition.summonHandler === 'controlled-burn') {
-      const target = targetCards[0]!;
-      const type = context.catalog[target!.card]?.type;
-      if (mode === 'backup' && (type !== 'Backup' || context.catalog[target!.card]!.cost > 2) || mode === 'forward' && type !== 'Forward') {
-        return [error('ILLEGAL_TARGET', 'The target does not match the selected Controlled Burn mode.')];
-      }
-    } else if (definition.summonHandler === 'borrowed-banner') {
-      if (targetCards.some(target => !['Forward', 'Backup'].includes(context.catalog[target!.card]?.type ?? '') || target!.controller === seat)) return [error('ILLEGAL_TARGET', 'Borrowed Banner requires an opposing Character.')];
-    } else if (targetCards.some(target => context.catalog[target!.card]?.type !== 'Forward')) {
-      return [error('ILLEGAL_TARGET', 'Choose a Forward currently on the field.')];
-    }
-    if (definition.summonHandler === 'ashen-verdict' && targetCards.some(target => !target!.dull)) return [error('ILLEGAL_TARGET', 'Ashen Verdict requires a dull Forward.')];
+  const targetRule = definition.summonTarget;
+  if (!targetRule) return [error('UNSUPPORTED_SUMMON', 'This Summon has no registered target declaration.')];
+  if (targets.length < targetRule.min || targets.length > targetRule.max) return [error('WRONG_TARGET_COUNT', 'Choose the required targets for this Summon.')];
+  if (new Set(targets).size !== targets.length) return [error('DUPLICATE_TARGET', 'Choose a different object for each target.')];
+  if (targetRule.modes?.length && !targetRule.modes.some(item => item.id === mode) || !targetRule.modes?.length && mode !== null) {
+    return [error('INVALID_MODE', 'Choose a mode declared by this Summon.')];
+  }
+  if (targets.some(target => !legalSummonTargets(state, seat, targetRule, mode, context).some(item => item.object === target))) {
+    return [error('ILLEGAL_TARGET', 'Choose a legal target for this Summon and mode.')];
   }
   const paymentErrors = validatePayment(state, seat, source, payment, definition.cost, context);
   if (paymentErrors.length) return paymentErrors;

@@ -1,5 +1,25 @@
 import { expect, test } from '@playwright/test';
 
+test('starts with the approved light theme tokens and readable text', async ({ page }) => {
+  await page.goto('/');
+  const theme = await page.locator('html').evaluate(element => {
+    const root = getComputedStyle(element);
+    const app = getComputedStyle(document.querySelector('#app')!);
+    return {
+      colorScheme: root.colorScheme,
+      canvas: root.getPropertyValue('--canvas').trim(),
+      surface: root.getPropertyValue('--surface').trim(),
+      text: root.getPropertyValue('--text').trim(),
+      appBackground: app.backgroundColor,
+      appColor: app.color,
+    };
+  });
+  expect(theme).toMatchObject({
+    colorScheme: 'light', canvas: '#f7f5ef', surface: '#fff', text: '#172b3a',
+    appBackground: 'rgb(247, 245, 239)', appColor: 'rgb(23, 43, 58)',
+  });
+});
+
 test('starts a match, completes setup, and advances priority from the real controls', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -58,6 +78,15 @@ test('edits and saves a singleton deck using the accessible catalog controls', a
   await page.goto('/');
   await page.getByRole('button', { name: 'Deck editor' }).click();
   await expect(page.getByText('19 / 19')).toBeVisible();
+  const commander = page.getByLabel('COMMANDER');
+  await commander.selectOption('P-021L');
+  await expect(commander).toHaveValue('P-021L');
+  await expect(page.getByRole('button', { name: 'Save for Player 1' })).toBeDisabled();
+  await commander.selectOption('P-001L');
+  const search = page.getByLabel('SEARCH');
+  await search.fill('P-011R');
+  await expect(page.getByRole('button', { name: 'Add Quartermaster' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add Ash Recruit' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Remove Quartermaster' }).click();
   await page.getByRole('button', { name: 'Add Quartermaster' }).click();
   await page.getByRole('button', { name: 'Save for Player 1' }).click();
@@ -119,8 +148,12 @@ test('casts the Commander directly from its tray without adding it to hand', asy
   await page.locator('#match-seed').fill('2');
   await page.getByRole('button', { name: 'New match' }).click();
   await page.getByRole('button', { name: 'Take first turn' }).click();
+  const firstMulliganSeat = await page.locator('.choice-panel .eyebrow').textContent();
+  const secondMulliganSeat = firstMulliganSeat?.includes('PLAYER 1') ? 'PLAYER 2 DECISION' : 'PLAYER 1 DECISION';
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
+  await expect(page.locator('.choice-panel .eyebrow')).toHaveText(secondMulliganSeat);
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pass priority' })).toBeVisible();
   const handLabel = page.locator('.hand-zone > .zone-label');
   const handBefore = (await handLabel.textContent())?.match(/HAND\s+(\d+)/)?.[1];
   const commander = page.locator('.other-zone-tray .card');

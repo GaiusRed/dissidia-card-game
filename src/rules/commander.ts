@@ -36,6 +36,7 @@ export function requestDeparture(state: MatchState, instance: InstanceId, destin
     min: 1, max: 1, allocation: null,
     resume: { handler: 'departure', step: 'commander-return', data: { instance, destination } },
   };
+  state.priority = null;
   return null;
 }
 

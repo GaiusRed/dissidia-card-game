@@ -33,6 +33,10 @@ describe('End Phase checkpoints', () => {
     if (!answered.ok) return;
     expect(answered.state.stack.map(item => item.handler)).toEqual(['rising-undertow-end-discard', 'mist-caller-activate']);
     expect(answered.state.priority).toBe(1);
+    expect(answered.state.choice).toBeNull();
+    const next = applyCommand(answered.state, { id: `end-${answered.state.seq}`, expectedSeq: answered.state.seq,
+      seat: answered.state.priority!, intent: { kind: 'pass' } }, context);
+    expect(next.ok).toBe(true);
   });
 
   it('requires hand-limit discard, clears marked damage and turn effects, then advances', () => {

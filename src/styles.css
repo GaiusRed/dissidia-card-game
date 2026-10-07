@@ -25,3 +25,65 @@
 
 .scenario-launch{display:flex;align-items:end;justify-content:center;gap:.5rem;margin:1.2rem auto .2rem;max-width:410px}.scenario-launch label{display:flex;flex:1;flex-direction:column;gap:.35rem;text-align:left;color:#b9b3a7;font-size:.55rem;letter-spacing:.13em;font-weight:700}.scenario-launch select{width:100%;padding:.58rem;border:1px solid #56534d;border-radius:4px;background:#1b1f27;color:#ece6da;font:500 .67rem Inter,Arial,sans-serif;letter-spacing:0}.scenario-launch button{white-space:nowrap}
 .event-log{position:absolute;z-index:3;right:2vw;top:39%;width:172px;max-height:185px;overflow:auto;padding:.65rem .7rem;border:1px solid #c6a66d30;border-radius:4px;background:#11151ccf;box-shadow:0 5px 20px #0004}.event-log ul{list-style:none;margin:.45rem 0 0;padding:0;display:flex;flex-direction:column;gap:.35rem}.event-log li{color:#aaa9a4;font-size:.58rem;line-height:1.35;border-left:1px solid #ad915d;padding-left:.42rem}.import-button{display:inline-grid;place-items:center}.top-actions{align-items:center}
+
+:root{
+  color-scheme:light;
+  color:#172b3a;
+  background:#f7f5ef;
+  --canvas:#f7f5ef;
+  --surface:#ffffff;
+  --surface-soft:#eaf2fa;
+  --text:#172b3a;
+  --text-muted:#4c6272;
+  --accent:#235d88;
+  --metal:#9b6a25;
+  --border:#b8cad6;
+  --danger:#a52b32;
+  --gold:var(--metal);
+  --muted:var(--text-muted);
+  --panel:rgba(255,255,255,.96);
+  --line:rgba(184,202,214,.9);
+}
+html,body{background:var(--canvas);color:var(--text)}
+#app{background-color:var(--canvas);background-image:linear-gradient(180deg,rgba(234,242,250,.35),rgba(247,245,239,.1) 42%,rgba(234,242,250,.38));color:var(--text)}
+.splash h1 em{color:var(--accent)}
+.intro,.selected-preview small,.empty-selection small,.choice-copy small,.player-info small,.zone-label,.pile-count,.seat-label,.editor-toolbar label,.deck-pickers label,.seed-field,.scenario-launch label,.event-log li,.editor-row small,.editor-columns h3 small,.commander-status small{color:var(--text-muted)}
+.subtle,.empty-field{color:var(--text-muted)}
+.primary{color:#fff;background:var(--accent);box-shadow:0 3px 14px rgba(23,43,58,.18)}
+.soft,.top-button{background:var(--surface);border-color:var(--border);color:var(--text)}
+.soft:hover,.top-button:hover{background:var(--surface-soft)}
+.topbar,.bottom-bar,.editor-page{background:rgba(234,242,250,.97);color:var(--text);border-color:var(--border);box-shadow:0 5px 22px rgba(23,43,58,.08)}
+.brand,.match-meta,.player-info,.selected-preview,.empty-selection,.editor-header,.editor-toolbar,.choice-copy{color:var(--text)}
+.brand small,.match-meta b,.eyebrow,.zone-label span,.center-caption,.deck-count,.element-mark,.other-zone-badge{color:var(--metal)}
+.avatar{border-color:var(--border);background:var(--surface-soft);color:var(--text)}
+.avatar.red{border-color:#d3a6a2;background:#f5e9e7}
+.damage,.damage small{color:var(--text)}
+.center-table{border-color:rgba(184,202,214,.7)}
+.deck-pile,.break-pile{color:var(--text-muted);background:linear-gradient(145deg,#fff,#eaf2fa);border-color:var(--border)}
+.deck-pile b,.break-pile b{color:var(--text)}
+.back{border-color:var(--border);background:repeating-linear-gradient(45deg,#eaf2fa,#eaf2fa 4px,#fff 4px,#fff 8px);box-shadow:0 2px 6px rgba(23,43,58,.12)}
+.card{color:var(--text);border-color:var(--border);background:linear-gradient(148deg,#fff,#edf3f8 63%,#e5eef5);box-shadow:0 4px 13px rgba(23,43,58,.14)}
+.card:before{background:radial-gradient(ellipse at 50% 30%,rgba(35,93,136,.1),transparent 68%);border-color:rgba(35,93,136,.18)}
+.card:after{background:var(--metal)}
+.card:hover{border-color:var(--accent);box-shadow:0 12px 28px rgba(23,43,58,.2),0 0 16px rgba(35,93,136,.16)}
+.card-cost{background:var(--accent);color:#fff}
+.card small,.card-number{color:var(--text-muted)}
+.card.selected,.card.targetable{border-color:var(--accent);box-shadow:0 0 0 2px rgba(35,93,136,.2),0 8px 22px rgba(23,43,58,.16)}
+.card.playable{border-color:var(--metal);box-shadow:0 0 14px rgba(155,106,37,.25),0 4px 13px rgba(23,43,58,.12)}
+.commander-status{border-color:var(--metal);background:var(--surface);color:var(--text);box-shadow:inset 0 0 20px rgba(155,106,37,.08)}
+.commander-status span{color:var(--metal)}
+.bottom-bar{box-shadow:0 -9px 30px rgba(23,43,58,.08)}
+.choice-panel,.break-targets,.event-log{background:rgba(255,255,255,.98);color:var(--text);border-color:var(--border);box-shadow:0 10px 38px rgba(23,43,58,.16)}
+.event-log li{border-color:var(--accent)}
+.result-overlay{background:rgba(247,245,239,.96);color:var(--text)}
+.toast,.editor-error{color:var(--danger)}
+.offline-pill{border-color:#607761;color:#35583a}
+.offline-label{color:#35583a}
+.deck-pickers select,.seed-field input,.editor-toolbar select,.scenario-launch select{background:var(--surface);border-color:var(--border);color:var(--text)}
+.seed-field input::placeholder{color:var(--text-muted)}
+.editor-list{background:var(--surface);border-color:var(--border)}
+.editor-row{border-color:#d7e2e9}
+.editor-row button{border-color:var(--border);background:var(--surface-soft);color:var(--accent)}
+.targeting-overlay line{stroke:var(--accent);filter:drop-shadow(0 0 4px rgba(35,93,136,.35))}
+
+.editor-filters{justify-content:flex-start;flex-wrap:wrap}.editor-filters label{display:flex;align-items:center;gap:.5rem}.editor-filters input{min-width:15rem;padding:.58rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)}.editor-list details{grid-column:1/-1;color:var(--text-muted);font-size:.7rem}.editor-list details p{max-width:36rem;line-height:1.45}

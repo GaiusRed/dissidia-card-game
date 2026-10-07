@@ -18,6 +18,28 @@ describe('read-only action availability', () => {
     expect(JSON.stringify(h.state)).toBe(before);
   });
 
+  it('derives Summon target offers from card metadata instead of handler-name rules', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-009C', zone: 'field' },
+      { seat: 0, card: 'P-015C', zone: 'hand' },
+      { seat: 0, card: 'P-003C', zone: 'field' },
+      { seat: 1, card: 'P-023C', zone: 'field' },
+    ] });
+    const modified = {
+      ...context,
+      catalog: {
+        ...context.catalog,
+        'P-015C': { ...context.catalog['P-015C']!, summonTarget: {
+          min: 1, max: 1, zones: ['field'] as const, types: ['Forward'] as const,
+          controller: 'you' as const, dull: null,
+        } },
+      },
+    };
+    const offer = legalActions(h.state, 0, modified).find(action => action.source === h.object(0, 'P-015C'))!;
+    expect(offer.targetOptions.map(target => target.id)).toEqual([h.object(0, 'P-003C')]);
+    expect(offer.minTargets).toBe(1);
+  });
+
   it('reports missing targets, insufficient CP, and timing as blocked reasons', () => {
     const h = fixture({ phase: 'end', placements: [
       { seat: 0, card: 'P-009C', zone: 'field' },

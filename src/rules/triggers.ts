@@ -8,7 +8,7 @@ export function scheduleEntryAbilities(state: MatchState, instance: string, cont
   const source = state.cards[instance];
   const definition = source && context.catalog[source.card];
   if (!source || source.zone !== 'field' || !definition) return;
-  const abilities = definition.abilities.filter(ability => ability.kind === 'auto' && context.handlers[ability.handler]);
+  const abilities = definition.abilities.filter(ability => ability.kind === 'auto' && ability.trigger === 'enter' && context.handlers[ability.handler]);
   for (const ability of abilities) {
     state.stack.push({
       id: `stack-${state.nextId++}`, controller: source.controller, source: source.object, lastKnown: { ...source },
@@ -30,16 +30,18 @@ export function scheduleDepartureAbilities(state: MatchState, departed: CardObje
     const source = state.cards[instance]!;
     if (source.controller !== departed.controller) continue;
     for (const ability of context.catalog[source.card]?.abilities ?? []) {
-      if (ability.kind === 'auto' && ability.handler === 'cinder-witness-damage' && destination === 'break') {
-        pending.push({ source, handler: ability.handler, data: { seat: source.controller } });
-      }
-      if (ability.kind === 'auto' && ability.handler === 'tide-witness-draw') {
+      if (ability.kind === 'auto' && ability.trigger === 'controlled-forward-leaves' &&
+          (!ability.triggerDestination || ability.triggerDestination.includes(destination))) {
         pending.push({ source, handler: ability.handler, data: { seat: source.controller } });
       }
     }
   }
-  if (destination === 'break' && context.catalog[departed.card]?.abilities.some(ability => ability.handler === 'night-regent-leave')) {
-    pending.push({ source: departed, handler: 'night-regent-leave', data: { seat: departed.controller, lastPower } });
+  if (destination === 'break') {
+    for (const ability of context.catalog[departed.card]?.abilities ?? []) {
+      if (ability.kind === 'auto' && ability.trigger === 'self-break') {
+        pending.push({ source: departed, handler: ability.handler, data: { seat: departed.controller, lastPower } });
+      }
+    }
   }
   for (const trigger of pending) {
     if (!context.handlers[trigger.handler]) continue;

@@ -1,5 +1,5 @@
 import type { ActionOffer, CastAccess, ChoiceOption, Element, EngineContext, MatchState, RuleError, Seat } from './types';
-import { getActivationCost } from './activation';
+import { legalAbilityTargets, legalSummonTargets } from './targets';
 
 const other = (seat: Seat): Seat => seat === 0 ? 1 : 0;
 const error = (code: string, message: string): RuleError => ({ code, message });
@@ -42,26 +42,6 @@ function hasPayment(state: MatchState, seat: Seat, source: string, cost: number,
   return total >= cost && (targetColorless || elements.some(element => (generated[element] ?? 0) > 0));
 }
 
-function targetOptions(state: MatchState, seat: Seat, handler: string | null, context: EngineContext): ChoiceOption[] {
-  if (!handler) return [];
-  const all = state.field.map(instance => state.cards[instance]!).filter(card => card.zone === 'field');
-  const forwards = all.filter(card => context.catalog[card.card]?.type === 'Forward');
-  const opposing = all.filter(card => card.controller !== seat);
-  let eligible = forwards;
-  if (handler === 'borrowed-banner') eligible = opposing.filter(card => ['Forward', 'Backup'].includes(context.catalog[card.card]?.type ?? ''));
-  if (handler === 'controlled-burn') eligible = opposing.filter(card => context.catalog[card.card]?.type === 'Forward' ||
-    (context.catalog[card.card]?.type === 'Backup' && (context.catalog[card.card]?.cost ?? 99) <= 2));
-  if (handler === 'ashen-verdict') eligible = forwards.filter(card => card.dull);
-  if (handler === 'stillwater') eligible = state.stack.map(item => find(state, item.source)).filter((card): card is NonNullable<typeof card> => !!card);
-  if (handler === 'final-spark' || handler === 'rising-undertow') return [];
-  return eligible.map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object }));
-}
-
-function targetRequirement(handler: string | null): number {
-  if (!handler || handler === 'final-spark' || handler === 'rising-undertow') return 0;
-  return handler === 'twin-embers' ? 2 : 1;
-}
-
 function sourceBlockers(state: MatchState, seat: Seat, source: string, context: EngineContext): RuleError[] {
   const card = find(state, source);
   if (!card) return [error('UNKNOWN_SOURCE', 'The card is no longer in this zone.')];
@@ -81,8 +61,8 @@ function sourceBlockers(state: MatchState, seat: Seat, source: string, context: 
   const cost = definition.cost + commanderTax;
   if (!hasPayment(state, seat, source, cost, definition.elements, context)) errors.push(error('INSUFFICIENT_CP', `You need ${cost} CP, including Commander tax.`));
   if (summon) {
-    const required = targetRequirement(definition.summonHandler);
-    if (targetOptions(state, seat, definition.summonHandler, context).length < required) errors.push(error('NO_LEGAL_TARGET', 'No legal target is available for this Summon.'));
+    const required = definition.summonTarget?.min ?? 0;
+    if (legalSummonTargets(state, seat, definition.summonTarget, null, context).length < required) errors.push(error('NO_LEGAL_TARGET', 'No legal target is available for this Summon.'));
   }
   return errors;
 }
@@ -107,13 +87,12 @@ export function legalActions(state: MatchState, seat: Seat, context: EngineConte
       if (!access.canDeclare) continue;
       const card = find(state, access.source)!;
       const definition = context.catalog[card.card]!;
-      const targets = targetOptions(state, seat, definition.summonHandler, context);
-      const count = targetRequirement(definition.summonHandler);
+      const targets = legalSummonTargets(state, seat, definition.summonTarget, null, context)
+        .map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object }));
+      const count = definition.summonTarget?.min ?? 0;
       offers.push({ id: `cast:${access.source}`, kind: 'cast', source: access.source, label: `Cast ${definition.name}`,
-        ability: null, targetOptions: targets, minTargets: count, maxTargets: count,
-        modes: definition.summonHandler === 'controlled-burn' ? [
-          { id: 'backup', label: 'Break a Backup', object: null }, { id: 'forward', label: 'Remove a Forward', object: null },
-        ] : [], needsPayment: access.displayedCost > 0,
+        ability: null, targetOptions: targets, minTargets: count, maxTargets: definition.summonTarget?.max ?? count,
+        modes: definition.summonTarget?.modes?.map(mode => ({ id: mode.id, label: mode.label, object: null })) ?? [], needsPayment: access.displayedCost > 0,
         payment: { cost: access.displayedCost, commanderTax: access.commanderTax, elements: definition.elements,
           discardOptions: state.zones[seat].hand.map(id => state.cards[id]!.object).filter(id => id !== access.source),
           backupOptions: state.field.map(id => state.cards[id]!).filter(item => item.controller === seat && context.catalog[item.card]?.type === 'Backup' && !item.dull).map(item => item.object),
@@ -129,18 +108,12 @@ export function legalActions(state: MatchState, seat: Seat, context: EngineConte
       const definition = context.catalog[source.card]!;
       for (const ability of definition.abilities) {
         if (ability.kind !== 'action' && ability.kind !== 'special') continue;
-        const rule = getActivationCost(ability.handler);
-        if (!rule || !context.handlers[ability.handler] || (rule.dull && source.dull)) continue;
-        const targetCards = Object.values(state.cards).filter(target => {
-          if (ability.handler === 'recovery-clerk-bottom') return target.zone === 'break' && target.owner === seat;
-          if (ability.handler === 'ember-medic-recover') return target.zone === 'break' && target.owner === seat && context.catalog[target.card]?.type === 'Forward';
-          if (target.zone !== 'field') return false;
-          if (context.catalog[target.card]?.type !== 'Forward') return false;
-          return ability.handler !== 'forge-apprentice-buff' || context.catalog[target.card]?.elements.includes('Fire') === true;
-        });
-        const specials = rule.specialName ? state.zones[seat].hand.map(id => state.cards[id]!)
-          .filter(card => context.catalog[card.card]?.name === rule.specialName && card.object !== source.object) : [];
-        if (targetCards.length === 0 || (rule.specialName !== null && specials.length === 0)) continue;
+        const rule = ability.activation;
+        if (!rule || !context.handlers[ability.handler] || (rule.dullSource && source.dull)) continue;
+        const targetCards = legalAbilityTargets(state, seat, rule.target, context);
+        const specials = rule.specialDiscardName ? state.zones[seat].hand.map(id => state.cards[id]!)
+          .filter(card => context.catalog[card.card]?.name === rule.specialDiscardName && card.object !== source.object) : [];
+        if (targetCards.length === 0 || (rule.specialDiscardName !== null && specials.length === 0)) continue;
         if (!hasPayment(state, seat, source.object, rule.cost, definition.elements, context, specials.map(card => card.object))) continue;
         const targetOptions = targetCards.map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object }));
         const handOptions = state.zones[seat].hand.map(id => state.cards[id]!).filter(card =>
@@ -149,16 +122,16 @@ export function legalActions(state: MatchState, seat: Seat, context: EngineConte
           context.catalog[card.card]?.type === 'Backup' && !card.dull && card.object !== source.object).map(card => card.object);
         offers.push({ id: `activate:${source.object}:${ability.id}`, kind: 'activate', source: source.object,
           label: `Activate ${ability.text}`, ability: ability.id, targetOptions, minTargets: 1, maxTargets: 1,
-          modes: [], needsPayment: rule.cost > 0 || rule.dull || rule.sacrifice || rule.specialName !== null,
-          payment: { cost: rule.cost, commanderTax: 0, elements: definition.elements, discardOptions: handOptions,
-            backupOptions: backups, specialOptions: specials.map(card => card.object), dullSource: rule.dull, sacrificeSource: rule.sacrifice } });
+          modes: [], needsPayment: rule.cost > 0 || rule.dullSource || rule.sacrificeSource || rule.specialDiscardName !== null,
+          payment: { cost: rule.cost, commanderTax: 0, elements: rule.elements, discardOptions: handOptions,
+            backupOptions: backups, specialOptions: specials.map(card => card.object), dullSource: rule.dullSource, sacrificeSource: rule.sacrificeSource } });
       }
     }
   }
   // Combat declarations are derived from the same current objects as reducer validation.
   if (state.phase === 'attack' && state.active === seat && !state.combat) {
     const attackers = state.field.map(id => state.cards[id]!).filter(card => card.controller === seat &&
-      context.catalog[card.card]?.type === 'Forward' && !card.dull && !card.frozen && card.attackedTurn !== state.turn &&
+      context.catalog[card.card]?.type === 'Forward' && !card.dull && card.attackedTurn !== state.turn &&
       (card.controlledSinceTurn < state.turn || context.catalog[card.card]?.keywords.includes('Haste')));
     for (const card of attackers) offers.push({ id: `attack:${card.object}`, kind: 'attack', source: card.object,
       label: `Attack with ${context.catalog[card.card]?.name ?? card.card}`, ability: null, targetOptions: [],
@@ -166,7 +139,7 @@ export function legalActions(state: MatchState, seat: Seat, context: EngineConte
   }
   if (state.phase === 'attack' && state.active !== seat && state.combat?.step === 'block') {
     const blockers = state.field.map(id => state.cards[id]!).filter(card => card.controller === seat &&
-      context.catalog[card.card]?.type === 'Forward' && !card.dull && !card.frozen);
+      context.catalog[card.card]?.type === 'Forward' && !card.dull);
     if (blockers.length > 0) offers.push({ id: 'block:choose', kind: 'block', source: null, label: 'Choose a blocker', ability: null,
       targetOptions: blockers.map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object })),
       minTargets: 1, maxTargets: 1, modes: [], needsPayment: false, payment: null });

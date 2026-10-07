@@ -1,4 +1,4 @@
-import { opusPh } from '../../src/content/opus-ph';
+import { opusPh, opusPhRuntimeEffects } from '../../src/content/manifest';
 import { abilityHandlers } from '../../src/content/handlers';
 import { buildFixture } from '../../src/scenarios/fixtures';
 import type { EngineContext, MatchState, ObjectId, Seat } from '../../src/rules/types';
@@ -9,7 +9,7 @@ export interface Harness {
   state: MatchState;
   object(seat: Seat, card: string): ObjectId;
 }
-export const context: EngineContext = { catalog: opusPh, handlers: abilityHandlers };
+export const context: EngineContext = { catalog: opusPh, handlers: abilityHandlers, cardEffects: opusPhRuntimeEffects };
 
 export function fixture(input: Fixture): Harness {
   const state = buildFixture(input, context);

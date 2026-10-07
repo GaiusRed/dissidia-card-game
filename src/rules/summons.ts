@@ -1,104 +1,60 @@
 import { moveCard } from './zones';
-import { requestDeparture } from './commander';
-import { addKeyword, addPower, changeControl, effectivePower, setPower } from './continuous';
-import { dealPlayerDamage, replacementDamage } from './damage';
-import { isTargetLegal } from './targets';
-import type { EngineContext, MatchState, RuleEvent, Seat, StackItem } from './types';
+import type { EngineContext, MatchState, RuleEvent, StackItem } from './types';
 
 function event(state: MatchState, type: string, data: RuleEvent['data']): RuleEvent {
-  return { id: 'event-' + state.nextId++, type, data };
-}
-function getObject(state: MatchState, object: string) { return Object.values(state.cards).find(card => card.object === object); }
-function deal(state: MatchState, targetObject: string, amount: number, context: EngineContext, events: RuleEvent[]): void {
-  const target = getObject(state, targetObject);
-  if (!target || target.zone !== 'field') return;
-  const applied = replacementDamage(state, target.object, amount, context);
-  target.damage += applied;
-  events.push(event(state, 'forward.damaged', { object: target.object, amount: applied, prevented: amount - applied }));
-  const power = effectivePower(state, target.object, context);
-  if (target.damage >= power) {
-    const receipt = requestDeparture(state, target.instance, 'break', context);
-    if (receipt) events.push(event(state, 'forward.broken', { object: receipt.old.object, card: receipt.old.card, destination: 'break' }));
-  }
-}
-function playerDamage(state: MatchState, seat: Seat, count: number, source: string, events: RuleEvent[], context: EngineContext): void {
-  events.push(...dealPlayerDamage(state, seat, count, source, context));
+  return { id: `event-${state.nextId++}`, type, data };
 }
 
-function drawCards(state: MatchState, seat: Seat, count: number, source: string, events: RuleEvent[]): void {
-  for (let index = 0; index < count; index += 1) {
-    const instance = state.zones[seat].deck[0];
-    if (!instance) {
-      state.work.push({ handler: 'rule-process', step: 'empty-deck', data: { seat } });
-      events.push(event(state, 'player.attempted-empty-draw', { seat, source }));
-      break;
-    }
-    const moved = moveCard(state, instance, 'hand');
-    events.push(event(state, 'card.drawn', { seat, card: moved.card, source }));
-  }
+function runCardScript(state: MatchState, item: StackItem, context: EngineContext, step: string, data: import('./types').Json) {
+  const script = context.handlers[item.handler];
+  if (!script) throw new Error(`No card script registered for ${item.lastKnown.card}/${item.handler}.`);
+  return script({ state, catalog: context.catalog, handlers: context.handlers, cardEffects: context.cardEffects,
+    frame: { handler: item.handler, step, data } });
 }
 
+/** Resolve a Summon through its owning card module, then apply generic stack cleanup. */
 export function resolveSummon(state: MatchState, item: StackItem, context: EngineContext): RuleEvent[] {
-  const events: RuleEvent[] = [];
-  const handler = item.handler;
-  const targets = item.targets.filter(target => isTargetLegal(state, item, target, context));
-  if (handler === 'scorch' && targets.length > 0) deal(state, targets[0]!, 4000, context, events);
-  else if (handler === 'twin-embers') {
-    for (const target of targets) deal(state, target, 3000, context, events);
-  } else if (handler === 'final-spark') playerDamage(state, item.controller === 0 ? 1 : 0, 2, item.lastKnown.card, events, context);
-  else if (handler === 'rising-undertow') {
-    drawCards(state, item.controller, 2, item.lastKnown.card, events);
-    const id = `effect-${state.nextId++}`;
-    state.effects.push({ id, timestamp: state.nextId, controller: item.controller, source: item.source,
-      handler: 'undertow-discard', data: { seat: item.controller, instance: item.lastKnown.instance }, expiresTurn: state.turn });
-    events.push(event(state, 'undertow.discard-scheduled', { seat: item.controller }));
-  }
-  else if (handler === 'return-tide' && targets.length > 0) {
-    const target = getObject(state, targets[0]!);
-    if (target?.zone === 'field' && context.catalog[target.card]?.type === 'Forward') {
-      const receipt = requestDeparture(state, target.instance, 'hand', context);
-      if (receipt) events.push(event(state, 'forward.returned', { object: receipt.old.object, card: receipt.old.card, owner: receipt.old.owner }));
-    }
-  } else if (handler === 'war-cry' || handler === 'guarding-current' || handler === 'shape-tide') {
-    const target = targets.length > 0 ? getObject(state, targets[0]!) : undefined;
-    if (target?.zone === 'field') {
-      if (handler === 'war-cry') {
-        addPower(state, item.source, target.object, 3000, state.turn);
-        addKeyword(state, item.source, target.object, 'Brave', state.turn);
-      } else if (handler === 'guarding-current') {
-        addPower(state, item.source, target.object, 2000, state.turn);
-        addKeyword(state, item.source, target.object, 'First Strike', state.turn);
-      } else setPower(state, item.source, target.object, 4000, state.turn);
-      events.push(event(state, 'forward.effect-applied', { object: target.object, handler }));
-    }
-  } else if ((handler === 'ashen-verdict' || handler === 'controlled-burn') && targets.length > 0) {
-    const target = getObject(state, targets[0]!);
-    if (target?.zone === 'field') {
-      const destination = handler === 'ashen-verdict' || item.mode === 'backup' ? 'break' : 'removed';
-      const receipt = requestDeparture(state, target.instance, destination, context);
-      if (receipt) events.push(event(state, 'card.removed-by-summon', { object: receipt.old.object, card: receipt.old.card, destination }));
-    }
-  } else if (handler === 'borrowed-banner' && targets.length > 0) {
-    const target = getObject(state, targets[0]!);
-    if (target?.zone === 'field') {
-      changeControl(state, item.source, target.object, item.controller, state.turn);
-      events.push(event(state, 'card.control-changed', { object: target.object, controller: item.controller }));
-    }
-  } else if (handler === 'stillwater' && targets.length > 0) {
-    const index = state.stack.findIndex(candidate => candidate.source === targets[0]);
-    if (index >= 0) {
-      const [cancelled] = state.stack.splice(index, 1);
-      if (cancelled) {
-        const physical = state.cards[cancelled.lastKnown.instance];
-        if (physical?.zone === 'stack') moveCard(state, physical.instance, 'break');
-        events.push(event(state, 'summon.cancelled', { item: cancelled.id, card: cancelled.lastKnown.card }));
-      }
-    }
-  }
+  const result = runCardScript(state, item, context, 'resolve', {
+    source: item.source, targets: item.targets, mode: item.mode, seat: item.controller,
+    instance: item.lastKnown.instance, card: item.lastKnown.card,
+  });
+  const events = [...result.events];
+  state.work.push(...result.next);
+  if (result.choice) state.choice = result.choice;
   const summon = state.cards[item.lastKnown.instance];
-  if (summon) {
+  if (summon?.zone === 'stack') {
     const old = moveCard(state, summon.instance, 'break');
     events.push(event(state, 'summon.resolved', { card: old.card, source: old.object }));
   }
   return events;
+}
+
+/** Resume a card-owned, JSON-serializable Summon continuation after an interrupted choice. */
+export function resumePendingSummonResolution(state: MatchState, context: EngineContext): RuleEvent[] {
+  const index = state.work.findIndex(item => item.handler === 'summon-resolution' && item.step === 'resume-handler');
+  if (index < 0 || state.choice) return [];
+  const continuation = state.work[index]!;
+  const raw = continuation.data && typeof continuation.data === 'object' && !Array.isArray(continuation.data)
+    ? continuation.data as Record<string, import('./types').Json> : {};
+  const handler = typeof raw.script === 'string' ? raw.script : 'twin-embers';
+  const item: StackItem = {
+    id: typeof raw.id === 'string' ? raw.id : 'resume',
+    controller: raw.seat === 1 ? 1 : 0,
+    source: typeof raw.source === 'string' ? raw.source : '',
+    lastKnown: state.cards[String(raw.instance)] ?? {
+      instance: String(raw.instance ?? ''), object: String(raw.source ?? ''), card: String(raw.card ?? ''), owner: raw.seat === 1 ? 1 : 0,
+      controller: raw.seat === 1 ? 1 : 0, zone: 'break', dull: false, damage: 0, controlledSinceTurn: state.turn, attackedTurn: null, frozen: false,
+    },
+    handler, targets: Array.isArray(raw.targets) ? raw.targets.filter((value): value is string => typeof value === 'string') : [],
+    mode: typeof raw.mode === 'string' ? raw.mode : null, data: null,
+  };
+  const result = runCardScript(state, item, context, 'resume', continuation.data);
+  if (result.choice) state.choice = result.choice;
+  if (result.choice) state.priority = null;
+  else {
+    state.work.splice(index, 1);
+    state.priority = state.active;
+  }
+  state.work.push(...result.next);
+  return result.events;
 }

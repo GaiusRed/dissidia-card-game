@@ -3,22 +3,31 @@ import type { Catalog, EngineContext, Keyword, MatchState, ObjectId } from './ty
 function effectData(data: unknown): Record<string, unknown> {
   return data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
 }
-export function effectivePower(state: MatchState, object: ObjectId, context: Pick<EngineContext, 'catalog'> | { catalog: Catalog }): number {
+export function effectivePower(state: MatchState, object: ObjectId,
+  context: { catalog: Catalog; cardEffects?: EngineContext['cardEffects'] }): number {
   const card = Object.values(state.cards).find(item => item.object === object);
   if (!card) return 0;
   const definition = context.catalog[card.card];
   if (!definition || definition.power === null) return 0;
   let power = definition.power;
-  for (const effect of state.effects) {
+  const applicable = state.effects.filter(effect => {
     const data = effectData(effect.data);
-    if (data.object !== object || (effect.expiresTurn !== null && effect.expiresTurn < state.turn)) continue;
-    if (effect.handler === 'power-modifier' && typeof data.amount === 'number') power += data.amount;
+    return data.object === object && (effect.expiresTurn === null || effect.expiresTurn >= state.turn);
+  }).sort((a, b) => a.timestamp - b.timestamp);
+  for (const effect of applicable) {
+    const data = effectData(effect.data);
     if (effect.handler === 'power-set' && typeof data.value === 'number') power = data.value;
+  }
+  for (const effect of applicable) {
+    const data = effectData(effect.data);
+    if (effect.handler === 'power-modifier' && typeof data.amount === 'number') power += data.amount;
   }
   for (const instance of state.field) {
     const support = state.cards[instance]!;
-    if (support.controller === card.controller && context.catalog[support.card]?.abilities.some(ability => ability.handler === 'banner-smith-buff') &&
-        definition.elements.includes('Fire')) power += 1000;
+    if (support.controller === card.controller) {
+      const provider = context.cardEffects?.[support.card]?.modifyPower;
+      if (provider) power += provider(state, card, support, context as EngineContext);
+    }
   }
   return Math.max(0, power);
 }

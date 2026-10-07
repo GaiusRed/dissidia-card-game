@@ -271,6 +271,16 @@ describe('automatic abilities', () => {
     if (answered.ok) expect(answered.state.cards[target.instance]!.damage).toBe(1000);
   });
 
+  it('uses the Witness card declaration to ignore Forward returns to hand', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-014R', zone: 'field' }, { seat: 0, card: 'P-003C', zone: 'field' },
+    ] });
+    const leaving = Object.values(h.state.cards).find(card => card.card === 'P-003C')!;
+    requestDeparture(h.state, leaving.instance, 'hand', context);
+    expect(h.state.cards[leaving.instance]!.zone).toBe('hand');
+    expect(h.state.stack).toHaveLength(0);
+  });
+
   it('uses Night Regent’s last known power when it leaves for the Break Zone', () => {
     const h = fixture({ placements: [
       { seat: 1, card: 'P-027H', zone: 'field' }, { seat: 1, card: 'P-024C', zone: 'field' },

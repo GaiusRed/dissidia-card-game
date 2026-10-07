@@ -7,23 +7,65 @@ function send(state: ReturnType<typeof fixture>['state'], seat: 0 | 1, intent: {
   return applyCommand(state, { id: `c${state.seq}`, expectedSeq: state.seq, seat, intent: intent as never }, context);
 }
 describe('sequential combat', () => {
+  it('runs a First Strike checkpoint before ordinary combat damage', () => {
+    let state = fixture({ phase: 'attack', placements: [
+      { seat: 0, card: 'P-006R', zone: 'field', controlledSinceTurn: 2 },
+      { seat: 0, card: 'P-019H', zone: 'hand' },
+      { seat: 1, card: 'P-023C', zone: 'field', controlledSinceTurn: 1 },
+    ] }).state;
+    const attacker = Object.values(state.cards).find(card => card.card === 'P-006R')!;
+    const blocker = Object.values(state.cards).find(card => card.card === 'P-023C')!;
+    for (const [seat, intent] of [
+      [0, { kind: 'attack', members: [attacker.object] }], [0, { kind: 'pass' }], [1, { kind: 'pass' }],
+      [1, { kind: 'block', blocker: blocker.object }], [0, { kind: 'pass' }], [1, { kind: 'pass' }],
+    ] as const) {
+      const next = send(state, seat, intent as never);
+      expect(next.ok).toBe(true);
+      if (!next.ok) return;
+      state = next.state;
+    }
+    expect(state.combat?.step).toBe('normalDamage');
+    expect(state.cards[blocker.instance]!.zone).toBe('break');
+    expect(state.cards[attacker.instance]!.damage).toBe(0);
+    expect(state.priority).toBe(0);
+    const summon = Object.values(state.cards).find(card => card.card === 'P-019H')!;
+    const forbidden = applyCommand(state, { id: 'during-first-strike-checkpoint', expectedSeq: state.seq, seat: 0, intent: {
+      kind: 'cast', source: summon.object, targets: [], mode: null,
+      payment: { discard: [], dullBackups: [], specialDiscard: null, dullSource: false, sacrificeSource: false, sourceElements: {}, spend: {} },
+    } }, context);
+    expect(forbidden).toMatchObject({ ok: false, error: { code: 'WRONG_TIMING' } });
+    for (const seat of [0, 1] as const) {
+      const next = send(state, seat, { kind: 'pass' });
+      expect(next.ok).toBe(true);
+      if (!next.ok) return;
+      state = next.state;
+    }
+    expect(state.combat).toBeNull();
+    expect(state.zones[1].damage).toHaveLength(0);
+  });
+
   it('deals one damage from an unblocked Haste Forward and lets another attack continue', () => {
     let state = fixture({ phase: 'attack', placements: [{ seat: 0, card: 'P-005R', zone: 'field', controlledSinceTurn: 3 }] }).state;
     const attack = send(state, 0, { kind: 'attack', members: [Object.values(state.cards).find(c => c.card === 'P-005R')!.object] });
     expect(attack.ok).toBe(true);
     if (!attack.ok) return;
     state = attack.state;
-    expect(state.priority).toBe(1);
-    const pass1 = send(state, 1, { kind: 'pass' });
+    expect(state.priority).toBe(0);
+    const pass1 = send(state, 0, { kind: 'pass' });
     expect(pass1.ok).toBe(true);
     if (!pass1.ok) return;
-    const pass2 = send(pass1.state, 0, { kind: 'pass' });
-    if (!pass2.ok) throw new Error(`${pass2.error.code}: ${pass2.error.message}`);
+    const pass2 = send(pass1.state, 1, { kind: 'pass' });
     if (!pass2.ok) return;
-    expect(pass2.state.zones[1].damage).toHaveLength(1);
-    expect(pass2.state.phase).toBe('attack');
-    expect(pass2.state.priority).toBe(0);
-    expect(pass2.state.combat).toBeNull();
+    const decline = send(pass2.state, 1, { kind: 'block', blocker: null });
+    if (!decline.ok) return;
+    const damage1 = send(decline.state, 0, { kind: 'pass' });
+    if (!damage1.ok) return;
+    const damage2 = send(damage1.state, 1, { kind: 'pass' });
+    if (!damage2.ok) throw new Error(`${damage2.error.code}: ${damage2.error.message}`);
+    expect(damage2.state.zones[1].damage).toHaveLength(1);
+    expect(damage2.state.phase).toBe('attack');
+    expect(damage2.state.priority).toBe(0);
+    expect(damage2.state.combat).toBeNull();
   });
 
   it('breaks a Forward when battle damage meets its power while preserving the survivor', () => {
@@ -35,6 +77,8 @@ describe('sequential combat', () => {
     const blocker = Object.values(state.cards).find(c => c.card === 'P-023C')!;
     const attack = send(state, 0, { kind: 'attack', members: [attacker.object] });
     if (!attack.ok) throw new Error('attack should be legal'); state = attack.state;
+    const openBlockers = send(state, 0, { kind: 'pass' }); if (!openBlockers.ok) throw new Error('turn player pass should be legal'); state = openBlockers.state;
+    const openBlockers2 = send(state, 1, { kind: 'pass' }); if (!openBlockers2.ok) throw new Error('defender pass should be legal'); state = openBlockers2.state;
     const block = send(state, 1, { kind: 'block', blocker: blocker.object });
     if (!block.ok) throw new Error('block should be legal'); state = block.state;
     const passes = send(state, 0, { kind: 'pass' });
@@ -89,12 +133,14 @@ describe('damage outcome acceptance', () => {
     const attacker = Object.values(state.cards).find(card => card.card === 'P-005R')!;
     const attack = send(state, 0, { kind: 'attack', members: [attacker.object] });
     if (!attack.ok) throw new Error('attack should be legal'); state = attack.state;
-    const first = send(state, 1, { kind: 'pass' });
+    const first = send(state, 0, { kind: 'pass' });
     if (!first.ok) throw new Error('pass should be legal'); state = first.state;
-    const second = send(state, 0, { kind: 'pass' });
-    if (!second.ok) throw new Error(`${second.error.code}: ${second.error.message}`);
-    expect(second.ok).toBe(true);
-    if (second.ok) expect(second.state.result).toEqual({ winner: 0, reason: 'damage' });
+    const second = send(state, 1, { kind: 'pass' }); if (!second.ok) throw new Error('pass should be legal'); state = second.state;
+    const decline = send(state, 1, { kind: 'block', blocker: null }); if (!decline.ok) throw new Error('no-block choice should be legal'); state = decline.state;
+    const damagePass = send(state, 0, { kind: 'pass' }); if (!damagePass.ok) throw new Error('damage pass should be legal'); state = damagePass.state;
+    const resolve = send(state, 1, { kind: 'pass' });
+    if (!resolve.ok) throw new Error(`${resolve.error.code}: ${resolve.error.message}`);
+    expect(resolve.state.result).toEqual({ winner: 0, reason: 'damage' });
   });
 });
 

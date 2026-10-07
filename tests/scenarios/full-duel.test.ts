@@ -34,6 +34,16 @@ function passBoth(state: MatchState): MatchState {
     state = send(state, seat, { kind: 'pass' });
     settleChoices();
   }
+  if (state.combat?.step === 'block' && state.priority !== null) {
+    state = send(state, state.priority, { kind: 'block', blocker: null });
+    for (let count = 0; count < 2; count += 1) {
+      if (state.result) return state;
+      const seat = state.priority;
+      if (seat === null) throw new Error('Expected a player with priority.');
+      state = send(state, seat, { kind: 'pass' });
+      settleChoices();
+    }
+  }
   return state;
 }
 
@@ -92,7 +102,11 @@ describe('normal-start full duel transcript', () => {
       decks: [cinderCompany, tidalAssembly] as [typeof cinderCompany, typeof tidalAssembly],
       format: mvpFormat,
     })).find(candidate => {
-      const state = createMatch(candidate, context);
+      let state = createMatch(candidate, context);
+      const choice = state.choice!;
+      state = send(state, choice.seat, { kind: 'answer', answer: {
+        choice: choice.id, selected: [choice.seat === 0 ? 'first' : 'second'], amounts: {},
+      } });
       const hand = state.zones[0].hand.map(instance => state.cards[instance]!.card);
       return hand.includes('P-003C') && hand.some(number => number !== 'P-003C' && opusPh[number]!.elements.includes('Fire'));
     });

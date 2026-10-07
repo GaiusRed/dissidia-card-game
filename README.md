@@ -15,7 +15,7 @@ Open the localhost address printed by Vite. Choose a deck for each player. Enter
 
 The table supports opening choices, priority, Character casting, the Commander Zone, Commander tax, Forward attacks, blocking, a set of stack effects, saved decks, match recovery, JSON save export/import, and offline reload. The current interaction follows Arena's bottom hand fan, playable-card highlights, click/drag casting, target arrows, and bottom-left choice dock.
 
-The MVP is still under implementation. See [the implementation plan](docs/superpowers/plans/2026-10-07-playtest-ready-mvp.md) and [rules coverage](docs/rules-coverage.md) for implemented behavior and pending acceptance cases. Do not use the current build as a complete FFTCG rules authority.
+The first three MVP milestones are still under implementation. See the [current audit repair plan](docs/superpowers/plans/2026-10-07-dissidia-mvp-audit-repair.md), [branch audit](docs/superpowers/audits/2026-10-07-mvp-branch-audit.md), and [rules coverage](docs/rules-coverage.md) for completed behavior and open acceptance cases. Do not use the current build as a complete FFTCG rules authority.
 
 ## Verify
 

@@ -37,4 +37,5 @@ export interface MatchView {
   log: RuleEvent[];
 }
 export interface CommandReply extends Extract<Transition, { ok: true }> { events: RuleEvent[] }
-export type SubmitCommand = (command: Command) => Transition;
+export type SubmitCommand = (command: Command) => Promise<Transition>;
+export interface CommandTransport { submit(command: Command): Promise<Transition> }

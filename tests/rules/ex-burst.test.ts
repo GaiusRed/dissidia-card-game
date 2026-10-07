@@ -11,7 +11,12 @@ function send(state: MatchState, seat: Seat, intent: Parameters<typeof applyComm
   return result.state;
 }
 function passBoth(state: MatchState, order: [Seat, Seat]): MatchState {
-  for (const seat of order) state = send(state, seat, { kind: 'pass' });
+  void order;
+  for (let i = 0; i < 2; i += 1) state = send(state, state.priority!, { kind: 'pass' });
+  if (state.combat?.step === 'block') state = send(state, state.priority!, { kind: 'block', blocker: null });
+  if (state.combat?.step === 'damage') {
+    for (let i = 0; i < 2; i += 1) state = send(state, state.priority!, { kind: 'pass' });
+  }
   return state;
 }
 
@@ -30,6 +35,7 @@ describe('EX Burst', () => {
     expect(state.stack).toEqual([]);
     expect(state.priority).toBeNull();
     expect(state.choice?.seat).toBe(0);
+    expect(state.choice?.resume.handler).toBe('scorch-ex-burst');
     expect(state.choice?.options.map(option => option.id)).toEqual(['use', 'skip']);
     const attemptedResponse = applyCommand(state, { id: 'ex-response', expectedSeq: state.seq, seat: 1, intent: { kind: 'pass' } }, context);
     expect(attemptedResponse.ok).toBe(false);
@@ -52,6 +58,7 @@ describe('EX Burst', () => {
     state = send(state, 0, { kind: 'attack', members: [attacker.object] });
     state = passBoth(state, [1, 0]);
     expect(state.stack).toEqual([]);
+    expect(state.choice?.resume.handler).toBe('archive-keeper-ex-burst');
     state = send(state, 1, { kind: 'answer', answer: { choice: state.choice!.id, selected: ['use'], amounts: {} } });
     expect(state.choice?.seat).toBe(1);
     expect(state.choice?.reason).toContain('Archive Keeper');
@@ -71,6 +78,7 @@ describe('EX Burst', () => {
     state = send(state, 0, { kind: 'attack', members: [attacker.object] });
     state = passBoth(state, [1, 0]);
     expect(state.stack).toEqual([]);
+    expect(state.choice?.resume.handler).toBe('return-tide-ex-burst');
     state = send(state, 1, { kind: 'answer', answer: { choice: state.choice!.id, selected: ['use'], amounts: {} } });
     expect(state.choice?.seat).toBe(1);
     state = send(state, 1, { kind: 'answer', answer: { choice: state.choice!.id, selected: [target.object], amounts: {} } });

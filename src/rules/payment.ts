@@ -25,7 +25,7 @@ export function validatePayment(
 
   for (const object of sources) {
     const card = byObject(state, object);
-    if (!card || card.owner !== seat || card.controller !== seat || card.object === source) {
+    if (!card || card.object === source) {
       errors.push(issue('INVALID_CP_SOURCE', 'A CP source must be an eligible card you control.'));
       continue;
     }
@@ -42,12 +42,12 @@ export function validatePayment(
     const sharesElement = lightDarkTarget || sourceDefinition.elements.some(item => definition.elements.includes(item));
     if (!sharesElement) errors.push(issue('INVALID_CP_SOURCE', 'The CP source must share an element with the card being played.'));
     if (payment.discard.includes(object)) {
-      if (card.zone !== 'hand' || definition.elements.some(item => item === 'Light' || item === 'Dark')) {
+      if (card.owner !== seat || card.controller !== seat || card.zone !== 'hand' || definition.elements.some(item => item === 'Light' || item === 'Dark')) {
         errors.push(issue('INVALID_CP_SOURCE', 'Only an eligible card in your hand can be discarded for CP.'));
       }
       generated[element] = (generated[element] ?? 0) + 2;
     } else {
-      if (card.zone !== 'field' || definition.type !== 'Backup' || card.dull) {
+      if (card.controller !== seat || card.zone !== 'field' || definition.type !== 'Backup' || card.dull) {
         errors.push(issue('INVALID_CP_SOURCE', 'Only an active Backup you control can be dulled for CP.'));
       }
       generated[element] = (generated[element] ?? 0) + 1;

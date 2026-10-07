@@ -1,0 +1,31 @@
+import type { CardDefinition } from '../../../rules/types';
+
+export const card: CardDefinition = {
+  "number": "P-006R",
+  "name": "Ember Duelist",
+  "set": "opus-ph",
+  "provenance": "placeholder",
+  "version": "opus-ph-v1",
+  "rarity": "R",
+  "type": "Forward",
+  "elements": [
+    "Fire"
+  ],
+  "cost": 3,
+  "power": 6000,
+  "jobs": [
+    "Soldier"
+  ],
+  "categories": [
+    "Placeholder"
+  ],
+  "generic": false,
+  "keywords": [
+    "First Strike"
+  ],
+  "abilities": [],
+  "summonHandler": null,
+  "ex": false,
+  "text": "First Strike."
+};
+export default card;

@@ -8,7 +8,7 @@ export default defineConfig({
     includeAssets: ['icons/icon.svg'],
     manifest: {
       name: 'Dissidia Card Game Playtest', short_name: 'Dissidia', start_url: '/', scope: '/',
-      display: 'standalone', background_color: '#10131c', theme_color: '#10131c',
+      display: 'standalone', background_color: '#f7f5ef', theme_color: '#f7f5ef',
       icons: [{ src: '/icons/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
     },
     workbox: {

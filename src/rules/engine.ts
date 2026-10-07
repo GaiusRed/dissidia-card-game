@@ -1,6 +1,6 @@
 import { commandSchema } from './codec';
 import { castCharacter, castSummon } from './casting';
-import { declareAttack, declareBlock } from './combat';
+import { declareAttack, declareBlock, resolveCombat } from './combat';
 import { activateAbility } from './activation';
 import { resolveDeparture } from './commander';
 import { assertInvariants } from './invariants';
@@ -9,6 +9,8 @@ import { openTriggerOrder, passPriority, runEndCheckpoint } from './priority';
 import { answerChoice } from './setup';
 import { moveCard } from './zones';
 import { continueDamageEx } from './damage';
+import { runRuleCheckpoint } from './checkpoints';
+import { resumePendingSummonResolution } from './summons';
 import type { Command, EngineContext, MatchState, RuleError, RuleEvent, Transition } from './types';
 export { describeCastAccess, legalActions } from './actions';
 
@@ -70,6 +72,7 @@ export function applyCommand(state: MatchState, command: Command, context: Engin
           }
           draft.triggers.shift();
           for (const id of answer.selected) draft.stack.push(items.find(item => item.id === id)!);
+          draft.choice = null;
           openTriggerOrder(draft, context);
           events.push(event(draft, 'trigger.order-chosen', { seat: command.seat, order: answer.selected }));
         } else if (pending.resume.handler === 'end-phase-discard' && pending.resume.step === 'discard') {
@@ -92,6 +95,40 @@ export function applyCommand(state: MatchState, command: Command, context: Engin
             draft.choice = null;
             events.push(...runEndCheckpoint(draft, context));
           }
+        } else if (pending.resume.handler === 'rule-checkpoint' && pending.resume.step === 'excess-backups') {
+          if (answer.selected.length !== pending.min || new Set(answer.selected).size !== answer.selected.length ||
+              answer.selected.some(id => !pending.options.some(option => option.id === id)) || Object.keys(answer.amounts).length > 0) {
+            failure = { code: 'INVALID_SELECTION', message: 'Choose the required number of Backups to put into the Break Zone.' };
+            break;
+          }
+          for (const id of answer.selected) {
+            const backup = Object.values(draft.cards).find(card => card.object === id);
+            if (!backup || backup.zone !== 'field' || context.catalog[backup.card]?.type !== 'Backup' || backup.controller !== command.seat) {
+              failure = { code: 'STALE_CHOICE', message: 'A selected Backup is no longer under your control.' };
+              break;
+            }
+            const old = moveCard(draft, backup.instance, 'break');
+            events.push(event(draft, 'character.broken', { object: old.object, card: old.card, destination: 'break', reason: 'excess-backups' }));
+          }
+          if (!failure) draft.choice = null;
+        } else if (pending.resume.handler === 'combat' && pending.resume.step === 'party-allocation') {
+          const requirement = pending.allocation;
+          const values = Object.entries(answer.amounts);
+          const total = values.reduce((sum, [, amount]) => sum + amount, 0);
+          if (!requirement || answer.selected.length !== 0 || total !== requirement.total ||
+              values.some(([id, amount]) => !pending.options.some(option => option.id === id) || amount < 0 || amount % requirement.increment !== 0) ||
+              Object.keys(answer.amounts).length > pending.options.length) {
+            failure = { code: 'INVALID_ALLOCATION', message: 'Assign the blocking Forward’s full damage in 1000 point increments.' };
+            break;
+          }
+          if (!draft.combat || draft.combat.step !== 'damage') {
+            failure = { code: 'STALE_CHOICE', message: 'The party is no longer in its damage step.' };
+            break;
+          }
+          draft.combat.allocation = { ...answer.amounts };
+          draft.choice = null;
+          events.push(event(draft, 'combat.damage-allocated', { amounts: answer.amounts }));
+          events.push(...resolveCombat(draft, context));
         } else if (pending.resume.handler === 'departure') {
           if (answer.selected.length !== 1 || Object.keys(answer.amounts).length > 0) {
             failure = { code: 'INVALID_SELECTION', message: 'Choose one Commander destination.' };
@@ -102,23 +139,8 @@ export function applyCommand(state: MatchState, command: Command, context: Engin
           else events.push(event(draft, 'commander.departed', {
             instance: receipt.old.instance, oldObject: receipt.old.object, destination: receipt.destination,
           }));
+          if (!failure && !draft.choice) events.push(...resumePendingSummonResolution(draft, context));
           if (!failure && draft.phase === 'end' && !draft.choice) events.push(...runEndCheckpoint(draft, context));
-        } else if (pending.resume.handler === 'rising-undertow' && pending.resume.step === 'discard') {
-          if (answer.selected.length !== 1 || Object.keys(answer.amounts).length > 0 ||
-              !pending.options.some(option => option.id === answer.selected[0])) {
-            failure = { code: 'INVALID_SELECTION', message: 'Choose one card from your hand to discard.' };
-            break;
-          }
-          const selected = Object.values(draft.cards).find(card => card.object === answer.selected[0]);
-          if (!selected || selected.zone !== 'hand' || selected.owner !== command.seat) {
-            failure = { code: 'STALE_CHOICE', message: 'That card is no longer in your hand.' };
-            break;
-          }
-          const old = moveCard(draft, selected.instance, 'break');
-          const effectId = (pending.resume.data as { effect?: unknown } | null)?.effect;
-          draft.effects = draft.effects.filter(effect => effect.id !== effectId);
-          draft.choice = null;
-          events.push(event(draft, 'card.discarded', { seat: old.owner, card: old.card, reason: 'Rising Undertow' }));
         } else if (context.handlers[pending.resume.handler]) {
           if (answer.selected.length < pending.min || answer.selected.length > pending.max ||
               answer.selected.some(id => !pending.options.some(option => option.id === id)) ||
@@ -128,7 +150,7 @@ export function applyCommand(state: MatchState, command: Command, context: Engin
           }
           draft.choice = null;
           const result = context.handlers[pending.resume.handler]!({
-            state: draft, catalog: context.catalog, handlers: context.handlers,
+            state: draft, catalog: context.catalog, handlers: context.handlers, cardEffects: context.cardEffects,
             frame: { ...pending.resume, data: { ...(pending.resume.data as Record<string, import('./types').Json>), selected: answer.selected } },
           });
           events.push(...result.events);
@@ -186,6 +208,7 @@ export function applyCommand(state: MatchState, command: Command, context: Engin
     }
     if (failure) return rejected(state, failure.code, failure.message);
     continueDamageEx(draft, context);
+    if (!draft.choice) events.push(...runRuleCheckpoint(draft, context));
     checkOutcomes(draft, context);
     draft.seq = state.seq + 1;
     assertInvariants(draft, context);

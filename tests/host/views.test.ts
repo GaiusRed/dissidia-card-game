@@ -3,6 +3,7 @@ import { cinderCompany, tidalAssembly } from '../../src/content/decks';
 import { LocalHost } from '../../src/host/local-host';
 import { projectView } from '../../src/host/views';
 import { fixture } from '../support/harness';
+import { loadRecord } from '../../src/storage/indexed-db';
 import type { RuleEvent } from '../../src/rules/types';
 import 'fake-indexeddb/auto';
 
@@ -43,30 +44,31 @@ describe('local host projections', () => {
     expect(JSON.stringify(projectView(h.state, null))).not.toContain(opponentDeckOrder[0]!);
   });
 
-  it('accepts only current-sequence commands and publishes accepted state changes', () => {
+  it('accepts only current-sequence commands and publishes accepted state changes after persistence', async () => {
     const host = new LocalHost();
     host.start(1);
     let notifications = 0;
     host.subscribe(() => notifications++);
     const state = host.getState();
     const choice = state.choice!;
-    const reply = host.submit({ id: 'start', expectedSeq: 0, seat: choice.seat, intent: {
+    const reply = await host.submit({ id: 'start', expectedSeq: 0, seat: choice.seat, intent: {
       kind: 'answer', answer: { choice: choice.id, selected: ['first'], amounts: {} },
     } });
     expect(reply.ok).toBe(true);
     expect(notifications).toBe(1);
-    const stale = host.submit({ id: 'stale', expectedSeq: 0, seat: choice.seat, intent: { kind: 'concede' } });
+    expect((await loadRecord())?.state).toEqual(host.getState());
+    const stale = await host.submit({ id: 'stale', expectedSeq: 0, seat: choice.seat, intent: { kind: 'concede' } });
     expect(stale.ok).toBe(false);
     expect(notifications).toBe(1);
   });
-  it('projects current-seat cast access and legal actions without exposing deck state', () => {
+  it('projects current-seat cast access and legal actions without exposing deck state', async () => {
     const host = new LocalHost();
     host.start(43);
     for (let step = 0; step < 4 && host.getState().choice; step++) {
       const state = host.getState();
       const choice = state.choice!;
       const selected = choice.kind === 'starting-player' ? 'first' : 'keep';
-      host.submit({ id: `project-setup-${step}`, expectedSeq: state.seq, seat: choice.seat, intent: {
+      await host.submit({ id: `project-setup-${step}`, expectedSeq: state.seq, seat: choice.seat, intent: {
         kind: 'answer', answer: { choice: choice.id, selected: [selected], amounts: {} },
       } });
     }
@@ -78,7 +80,7 @@ describe('local host projections', () => {
     expect(foreign.actions).toEqual([]);
     expect(JSON.stringify(foreign)).not.toContain(current.zones[current.priority].deck[0]!);
   });
-  it('deduplicates identical command IDs and rejects conflicting reuse without changing state', () => {
+  it('deduplicates identical command IDs and rejects conflicting reuse without changing state', async () => {
     const host = new LocalHost();
     host.start(8);
     const initial = host.getState();
@@ -86,13 +88,13 @@ describe('local host projections', () => {
     const command = { id: 'idempotent-setup', expectedSeq: initial.seq, seat: choice.seat, intent: {
       kind: 'answer' as const, answer: { choice: choice.id, selected: ['first'], amounts: {} },
     } };
-    const first = host.submit(command);
+    const first = await host.submit(command);
     expect(first.ok).toBe(true);
     const afterFirst = JSON.stringify(host.getState());
-    const duplicate = host.submit(command);
+    const duplicate = await host.submit(command);
     expect(duplicate).toEqual(first);
     expect(JSON.stringify(host.getState())).toBe(afterFirst);
-    const conflict = host.submit({ ...command, intent: { kind: 'concede' } });
+    const conflict = await host.submit({ ...command, intent: { kind: 'concede' } });
     expect(conflict.ok).toBe(false);
     if (!conflict.ok) expect(conflict.error.code).toBe('COMMAND_ID_REUSED');
     expect(JSON.stringify(host.getState())).toBe(afterFirst);
@@ -102,14 +104,16 @@ describe('local host projections', () => {
     host.start(9);
     const initial = host.getState();
     const choice = initial.choice!;
-    host.submit({ id: 'setup', expectedSeq: 0, seat: choice.seat, intent: {
+    const command = { id: 'setup', expectedSeq: 0, seat: choice.seat, intent: {
       kind: 'answer', answer: { choice: choice.id, selected: ['first'], amounts: {} },
-    } });
+    } } as const;
+    const accepted = await host.submit(command);
     await host.waitForSave();
     const exported = await host.exportSave();
     const restored = new LocalHost();
     expect(await restored.importSave(exported)).toEqual({ imported: true, reason: null });
     expect(restored.getState()).toEqual(host.getState());
+    expect(await restored.submit(command)).toEqual(accepted);
     const before = JSON.stringify(restored.getState());
     const rejected = await restored.importSave('{"format":"wrong"}');
     expect(rejected.imported).toBe(false);

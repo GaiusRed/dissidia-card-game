@@ -1,15 +1,14 @@
-import type { Catalog, MatchState, ObjectId } from './types';
+import type { Catalog, EngineContext, MatchState, ObjectId } from './types';
 import { moveCard } from './zones';
-import type { EngineContext, RuleEvent, Seat } from './types';
+import type { RuleEvent, Seat } from './types';
 
 /** Apply simple replacement abilities before adding damage to a Forward. */
-export function replacementDamage(state: MatchState, target: ObjectId, amount: number, context: { catalog: Catalog }): number {
+export function replacementDamage(state: MatchState, target: ObjectId, amount: number,
+  context: { catalog: Catalog; cardEffects?: EngineContext['cardEffects'] }): number {
   const card = Object.values(state.cards).find(item => item.object === target);
   if (!card || amount <= 0) return Math.max(0, amount);
-  const definition = context.catalog[card.card];
-  if (definition?.abilities.some(ability => ability.kind === 'replacement' && ability.handler === 'dawn-guardian-damage')) {
-    return Math.max(0, amount - 1000);
-  }
+  const replacement = context.cardEffects?.[card.card]?.replaceDamage;
+  if (replacement) return replacement(state, card, amount, context as EngineContext);
   return amount;
 }
 
@@ -45,13 +44,13 @@ export function continueDamageEx(state: MatchState, context: EngineContext): voi
     const source = Object.values(state.cards).find(card => card.object === object);
     const definition = source && context.catalog[source.card];
     state.work[index] = { ...continuation, data: { seat: data.seat, remaining } };
-    if (!source || source.zone !== 'damage' || !definition?.ex) continue;
+    if (!source || source.zone !== 'damage' || !definition?.ex || !definition.exHandler || !context.handlers[definition.exHandler]) continue;
     state.choice = {
       id: `choice-${state.nextId++}`, seat: data.seat, kind: 'confirm',
       reason: `${definition.name}: use this EX Burst?`,
       options: [{ id: 'use', label: 'Use EX Burst', object }, { id: 'skip', label: 'Skip', object }],
       min: 1, max: 1, allocation: null,
-      resume: { handler: 'ex-burst', step: 'decision', data: { seat: data.seat, card: source.card, source: object } },
+      resume: { handler: definition.exHandler, step: 'decision', data: { seat: data.seat, source: object } },
     };
     state.priority = null;
     return;

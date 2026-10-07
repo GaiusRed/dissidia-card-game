@@ -78,6 +78,12 @@ export function runEndCheckpoint(state: MatchState, context: EngineContext): Rul
 /** Pass priority and advance an empty-stack timing window after both players pass. */
 export function passPriority(state: MatchState, context: EngineContext): RuleEvent[] {
   if (state.priority === null) throw new Error('There is no player with priority.');
+  if (state.phase === 'attack' && state.combat?.step === 'block' && state.priority !== state.active) {
+    state.combat.step = 'damage';
+    state.passes = 0;
+    state.priority = state.choice ? null : state.active;
+    return [event(state, 'combat.block-declined', { seat: other(state.active) })];
+  }
   const events: RuleEvent[] = [event(state, 'priority.passed', { seat: state.priority })];
   state.passes += 1;
   if (state.passes === 1) {
@@ -85,24 +91,33 @@ export function passPriority(state: MatchState, context: EngineContext): RuleEve
     return events;
   }
   state.passes = 0;
-  if (state.phase === 'attack' && state.combat) {
-    events.push(...resolveCombat(state, context));
-    return events;
-  }
   if (state.stack.length > 0) {
     const item = state.stack.pop()!;
     if (state.cards[item.lastKnown.instance]?.zone === 'stack' && context.catalog[item.lastKnown.card]?.type === 'Summon') events.push(...resolveSummon(state, item, context));
     else {
       const ability = context.handlers[item.handler];
       if (!ability) throw new Error(`No resolution handler for ${item.handler}.`);
-      const result = ability({ state, catalog: context.catalog, handlers: context.handlers, frame: { handler: item.handler, step: 'resolve', data: item.data } });
+      const result = ability({ state, catalog: context.catalog, handlers: context.handlers, cardEffects: context.cardEffects,
+        frame: { handler: item.handler, step: 'resolve', data: item.data } });
       events.push(...result.events);
       state.work.push(...result.next);
       if (result.choice) state.choice = result.choice;
     }
-    state.priority = state.active;
+    state.priority = state.choice ? null : state.active;
     events.push(event(state, 'stack.resolved', { item: item.id, handler: item.handler }));
     return events;
+  }
+  if (state.phase === 'attack' && state.combat) {
+    if (state.combat.step === 'prepare') {
+      state.combat.step = 'block';
+      state.priority = other(state.active);
+      events.push(event(state, 'combat.blockers-opened', { seat: state.priority }));
+      return events;
+    }
+    if (state.combat.step === 'damage' || state.combat.step === 'normalDamage') {
+      events.push(...resolveCombat(state, context));
+      return events;
+    }
   }
   switch (state.phase) {
     case 'main1': state.phase = 'attack'; break;
@@ -124,7 +139,7 @@ export function passPriority(state: MatchState, context: EngineContext): RuleEve
         const source = state.cards[instance]!;
         if (source.controller !== state.active) continue;
         const abilities = context.catalog[source.card]?.abilities.filter(ability =>
-          ability.kind === 'auto' && ability.handler === 'mist-caller-activate' && context.handlers[ability.handler]) ?? [];
+          ability.kind === 'auto' && ability.trigger === 'end-phase' && context.handlers[ability.handler]) ?? [];
         for (const ability of abilities) grouped[source.controller].push({
           id: `stack-${state.nextId++}`, controller: source.controller, source: source.object, lastKnown: { ...source },
           handler: ability.handler, targets: [], mode: null,

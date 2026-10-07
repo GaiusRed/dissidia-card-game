@@ -14,13 +14,27 @@ export interface FormatProfile { id: string; mainSize: 19 | 49; allowedSets: str
 export interface AbilityDefinition {
   id: string; kind: 'action' | 'special' | 'auto' | 'field' | 'replacement';
   handler: string; text: string; ex: boolean;
+  trigger?: 'enter' | 'controlled-forward-leaves' | 'self-break' | 'end-phase';
+  triggerDestination?: Zone[];
+  activation?: {
+    cost: number; elements: Element[]; dullSource: boolean; sacrificeSource: boolean; specialDiscardName: string | null;
+    target: {
+      zones: Zone[]; types: CardDefinition['type'][]; elements: Element[];
+      owner: 'you' | 'any'; controller: 'you' | 'opponent' | 'any'; dull: boolean | null;
+    };
+  };
+}
+export interface SummonTargetRule {
+  min: number; max: number; zones: Zone[]; types: CardDefinition['type'][];
+  controller: 'you' | 'opponent' | 'any'; dull: boolean | null; maxCost?: number;
+  modes?: { id: string; label: string; types: CardDefinition['type'][]; maxCost?: number }[];
 }
 export interface CardDefinition {
   number: CardNumber; name: string; set: string; provenance: 'placeholder' | 'custom' | 'official';
   version: string; rarity: 'C' | 'R' | 'H' | 'L' | 'S'; type: 'Forward' | 'Backup' | 'Summon';
   elements: Element[]; cost: number; power: number | null; jobs: string[]; categories: string[];
   generic: boolean; keywords: Keyword[]; abilities: AbilityDefinition[]; text: string;
-  summonHandler: string | null; ex: boolean;
+  summonHandler: string | null; summonTarget?: SummonTargetRule; exHandler?: string; ex: boolean;
 }
 export type Catalog = Readonly<Record<CardNumber, CardDefinition>>;
 export interface CardObject {
@@ -61,7 +75,7 @@ export interface EffectRecord {
   handler: string; data: Json; expiresTurn: number | null;
 }
 export interface CombatState {
-  step: 'prepare' | 'declare' | 'block' | 'firstStrike' | 'damage' | 'finish';
+  step: 'prepare' | 'declare' | 'block' | 'firstStrike' | 'damage' | 'normalDamage' | 'finish';
   attackers: ObjectId[]; blocker: ObjectId | null; wasBlocked: boolean;
   allocation: Record<ObjectId, number>;
 }
@@ -95,7 +109,18 @@ export interface CastAccess {
   source: ObjectId; sourceZone: Zone; canDeclare: boolean;
   blockedReasons: RuleError[]; displayedCost: number; commanderTax: number;
 }
-export interface EngineContext { catalog: Catalog; handlers: Readonly<Record<string, AbilityHandler>> }
-export interface HandlerContext { state: MatchState; catalog: Catalog; handlers: Readonly<Record<string, AbilityHandler>>; frame: Continuation }
+export interface CardRuntimeEffects {
+  replaceDamage?(state: MatchState, target: CardObject, amount: number, context: EngineContext): number;
+  modifyPower?(state: MatchState, target: CardObject, source: CardObject, context: EngineContext): number;
+}
+export interface EngineContext {
+  catalog: Catalog;
+  handlers: Readonly<Record<string, AbilityHandler>>;
+  cardEffects?: Readonly<Record<CardNumber, CardRuntimeEffects>> | undefined;
+}
+export interface HandlerContext {
+  state: MatchState; catalog: Catalog; handlers: Readonly<Record<string, AbilityHandler>>;
+  cardEffects?: EngineContext['cardEffects']; frame: Continuation;
+}
 export interface HandlerResult { events: RuleEvent[]; next: Continuation[]; choice: Choice | null }
 export type AbilityHandler = (context: HandlerContext) => HandlerResult;

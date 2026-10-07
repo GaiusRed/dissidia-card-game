@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { castCharacter } from '../../src/rules/casting';
+import { castCharacter, castSummon } from '../../src/rules/casting';
 import { commanderCost } from '../../src/rules/commander';
 import { fixture, context } from '../support/harness';
 import { moveCard } from '../../src/rules/zones';
@@ -60,5 +60,30 @@ describe('Character casting', () => {
       { seat: 0, card: 'P-009C', zone: 'field' }, { seat: 0, card: 'P-010C', zone: 'field' },
     ] });
     expect(castCharacter(named.state, 0, named.object(0, 'P-002C'), payBackups(named, 2), context).map(e => e.code)).toContain('DUPLICATE_NAME');
+  });
+});
+
+describe('Summon declaration metadata', () => {
+  it('uses the owning card target declaration during command validation', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-009C', zone: 'field' },
+      { seat: 0, card: 'P-015C', zone: 'hand' },
+      { seat: 1, card: 'P-023C', zone: 'field' },
+    ] });
+    const metadataContext = {
+      ...context,
+      catalog: { ...context.catalog, 'P-015C': { ...context.catalog['P-015C']!, summonTarget: {
+        min: 1, max: 1, zones: ['field'] as const, types: ['Forward'] as const,
+        controller: 'you' as const, dull: null,
+      } } },
+    };
+    const source = h.object(0, 'P-015C');
+    const backup = h.object(0, 'P-009C');
+    const payment: Payment = { discard: [], dullBackups: [backup], specialDiscard: null, dullSource: false,
+      sacrificeSource: false, sourceElements: { [backup]: 'Fire' }, spend: { Fire: 1 } };
+    const before = JSON.stringify(h.state);
+    const errors = castSummon(h.state, 0, source, [h.object(1, 'P-023C')], null, payment, metadataContext);
+    expect(errors.map(error => error.code)).toContain('ILLEGAL_TARGET');
+    expect(JSON.stringify(h.state)).toBe(before);
   });
 });

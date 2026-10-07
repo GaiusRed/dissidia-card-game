@@ -1,4 +1,5 @@
 import { validateDeck } from './format';
+import { catalogVersion } from './catalog-version';
 import { nextRandom, shuffle } from './random';
 import { moveCard } from './zones';
 import { advanceTurnStep } from './turns';
@@ -47,7 +48,7 @@ export function createMatch(options: StartOptions, context: EngineContext): Matc
     if (errors.length) throw new Error(errors.map(item => item.message).join(' '));
   }
   const state: MatchState = {
-    versions: { schema: '1', engine: '2', format: options.format.id, catalog: context.catalog['P-001L']?.version ?? 'catalog-v1' },
+    versions: { schema: '1', engine: '2', format: options.format.id, catalog: catalogVersion(context.catalog) },
     seq: 0, rng: options.seed >>> 0, nextId: 0, format: options.format,
     turn: 0, active: 0, firstPlayer: 0, phase: 'setup', priority: null, passes: 0,
     cards: {}, zones: { 0: zones(), 1: zones() }, field: [], stackCards: [],
@@ -81,8 +82,6 @@ export function createMatch(options: StartOptions, context: EngineContext): Matc
   const draw = nextRandom(state.rng);
   state.rng = draw.seed;
   const chooser: Seat = draw.value < 0.5 ? 0 : 1;
-  drawOpening(state, 0);
-  drawOpening(state, 1);
   choice(state, chooser, 'starting-player', 'Choose whether you take the first turn.',
     [{ id: 'first', label: 'Take first turn', object: null }, { id: 'second', label: 'Take second turn', object: null }],
     1, 1, 'starting-player', null);
@@ -105,6 +104,8 @@ export function answerChoice(state: MatchState, answer: Answer, seat: Seat, cont
     const firstSeat = answer.selected[0] === 'first' ? seat : other(seat);
     state.firstPlayer = firstSeat;
     state.active = firstSeat;
+    drawOpening(state, 0);
+    drawOpening(state, 1);
     askMulligan(state, 0, firstSeat, context);
     return [];
   }
