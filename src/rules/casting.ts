@@ -1,5 +1,6 @@
 import { commitPayment, validatePayment } from './payment';
 import type { EngineContext, MatchState, ObjectId, Payment, RuleError, Seat } from './types';
+import type { CostSpec } from './types';
 import { moveCard } from './zones';
 import { scheduleEntryAbilities } from './triggers';
 import { legalSummonTargets } from './targets';
@@ -35,15 +36,18 @@ export function castCharacter(state: MatchState, seat: Seat, source: ObjectId, p
     return [error('LIGHT_DARK_LIMIT', 'Only one Light or Dark card can be on your field.')];
   }
   const cost = definition.cost + (fromCommanderZone ? commander.casts * 2 : 0);
-  const paymentErrors = validatePayment(state, seat, source, payment, cost, context);
+  const costSpec: CostSpec = { amount: cost, elements: definition.elements, dullSource: false, sacrificeSource: false, specialDiscardName: null };
+  const paymentErrors = validatePayment(state, seat, source, payment, costSpec, context);
   if (paymentErrors.length) return paymentErrors;
-  commitPayment(state, seat, source, payment, cost, context);
+  commitPayment(state, seat, source, payment, costSpec, context);
   moveCard(state, card.instance, 'field');
   const entered = state.cards[card.instance]!;
   entered.controller = seat;
   entered.controlledSinceTurn = state.turn;
   entered.dull = definition.type === 'Backup';
   if (fromCommanderZone) commander.casts += 1;
+  state.passes = 0;
+  state.priority = seat;
   scheduleEntryAbilities(state, card.instance, context);
   return [];
 }
@@ -71,13 +75,20 @@ export function castSummon(state: MatchState, seat: Seat, source: ObjectId, targ
   if (targets.some(target => !legalSummonTargets(state, seat, targetRule, mode, context).some(item => item.object === target))) {
     return [error('ILLEGAL_TARGET', 'Choose a legal target for this Summon and mode.')];
   }
-  const paymentErrors = validatePayment(state, seat, source, payment, definition.cost, context);
+  const costSpec: CostSpec = { amount: definition.cost, elements: definition.elements, dullSource: false, sacrificeSource: false, specialDiscardName: null };
+  const paymentErrors = validatePayment(state, seat, source, payment, costSpec, context);
   if (paymentErrors.length) return paymentErrors;
-  commitPayment(state, seat, source, payment, definition.cost, context);
+  commitPayment(state, seat, source, payment, costSpec, context);
   const lastKnown = moveCard(state, card.instance, 'stack');
+  const registered = context.registry?.manifest.cards.find(item => item.number === definition.number);
+  const typedSummon = registered && context.registry
+    ? context.registry.card(definition.number).abilities.find(ability => ability.kind === 'summon') : undefined;
+  const resume = registered && typedSummon ? {
+    script: definition.number, version: registered.behaviorVersion, ability: typedSummon.id, step: 'resolve', payload: null,
+  } : undefined;
   state.stack.push({ id: `stack-${state.nextId++}`, controller: seat, source: state.cards[card.instance]!.object,
-    lastKnown, handler: definition.summonHandler, targets: [...targets], mode, data: null });
+    lastKnown, handler: definition.summonHandler, targets: [...targets], mode, data: null, ...(resume ? { resume } : {}) });
   state.passes = 0;
-  state.priority = seat === 0 ? 1 : 0;
+  state.priority = seat;
   return [];
 }

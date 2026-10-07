@@ -1,11 +1,28 @@
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
-import { driver } from '../support/driver';
-import { createSave } from '../../src/storage/save';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+let browserErrors: string[] = [];
+test.beforeEach(async ({ page }) => {
+  browserErrors = [];
+  page.on('pageerror', error => browserErrors.push(error.message));
+  page.on('console', message => {
+    if (message.type() === 'error') browserErrors.push(message.text());
+  });
+});
+test.afterEach(() => {
+  expect(browserErrors, 'UI design flow must not produce browser errors').toEqual([]);
+});
 
 async function capture(page: Page, info: TestInfo, name: string) {
   const path = info.outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: true });
-  await info.attach(name, { path, contentType: 'image/png' });
+  const screenshot = await page.screenshot({ path, fullPage: true });
+  await info.attach(name, { body: screenshot, contentType: 'image/png' });
+  if (name === 'crowded-board') {
+    const evidence = resolve(process.cwd(), 'docs/ui-captures');
+    mkdirSync(evidence, { recursive: true });
+    writeFileSync(resolve(evidence, `${name}-${info.project.name}.png`), screenshot);
+  }
 }
 
 async function start(page: Page) {
@@ -64,11 +81,36 @@ test('hand hover is unclipped, Commander identity is unique, and inspection chan
   }
 });
 
+test('hand sizes 0, 1, 5, 7, 10, and 19 stay reachable without clipping', async ({ page }, info) => {
+  await start(page);
+  const hand = page.locator('.hand-fan');
+  const cardMarkup = await hand.locator('.card').first().evaluate(node => node.outerHTML);
+  for (const count of [0, 1, 5, 7, 10, 19]) {
+    await hand.evaluate((node, args) => {
+      node.innerHTML = Array.from({ length: args.count }, (_, index) => args.markup.replace(/data-card="[^"]*"/, `data-card="ui-${index}"`))
+        .join('');
+    }, { count, markup: cardMarkup });
+    await expect(hand.locator('.card')).toHaveCount(count);
+    if (count === 0) continue;
+    const last = hand.locator('.card').last();
+    await last.scrollIntoViewIfNeeded();
+    await last.hover();
+    const geometry = await last.evaluate(node => {
+      const card = node.getBoundingClientRect();
+      return { clipped: card.left < 0 || card.right > innerWidth || card.top < 0 || card.bottom > innerHeight,
+        scrolled: (node.parentElement as HTMLElement).scrollLeft > 0 };
+    });
+    expect(geometry.clipped, `The last card is fully visible with ${count} cards`).toBe(false);
+    if (count === 19) expect(geometry.scrolled, 'Overflow hand cards remain reachable through horizontal scrolling').toBe(true);
+  }
+  await capture(page, info, 'hand-size-matrix');
+});
+
 test('crowded battlefield separates both players and controls stay reachable', async ({ page }, info) => {
   await page.goto('/');
   await page.locator('#scenario-select').selectOption('control-conflict');
   await page.locator('#start-scenario').click();
-  await expect(page.locator('.battlefield .card')).toHaveCount(8);
+  await expect(page.locator('.battlefield .card')).toHaveCount(9);
   await capture(page, info, 'crowded-board');
   // Semantic rows are the presentation contract, not a color-only distinction.
   for (const seat of [1, 2]) {
@@ -76,6 +118,30 @@ test('crowded battlefield separates both players and controls stay reachable', a
       expect.soft(await page.getByRole('region', { name: `Player ${seat} ${type}`, exact: true }).count(), `Player ${seat} ${type} row`).toBe(1);
     }
   }
+  const rowCenters = await page.evaluate(() => {
+    const bounds = (seat: number, type: 'Forwards' | 'Backups') => {
+      const rect = document.querySelector<HTMLElement>(`[aria-label="Player ${seat} ${type}"]`)!.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    };
+    return {
+      opponentForwards: bounds(1, 'Forwards'), opponentBackups: bounds(1, 'Backups'),
+      playerForwards: bounds(2, 'Forwards'), playerBackups: bounds(2, 'Backups'),
+      opponentZonesBottom: document.querySelector<HTMLElement>('.player-row.opponent')!.getBoundingClientRect().bottom,
+      handTop: document.querySelector<HTMLElement>('.hand-zone')!.getBoundingClientRect().top,
+      battlefieldBottom: document.querySelector<HTMLElement>('.battlefield')!.getBoundingClientRect().bottom,
+    };
+  });
+  expect(rowCenters.opponentBackups.bottom).toBeLessThanOrEqual(rowCenters.opponentForwards.top + 4);
+  expect(rowCenters.playerForwards.bottom).toBeLessThanOrEqual(rowCenters.playerBackups.top + 4);
+  expect(rowCenters.opponentForwards.bottom).toBeLessThanOrEqual(rowCenters.playerForwards.top + 6);
+  expect(rowCenters.opponentZonesBottom).toBeLessThanOrEqual(rowCenters.opponentBackups.top + 2);
+  expect(rowCenters.battlefieldBottom).toBeLessThanOrEqual(rowCenters.handTop + 2);
+  await page.locator('.battlefield').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  const browsedBottom = await page.evaluate(() => ({
+    rowBottom: document.querySelector<HTMLElement>('[aria-label="Player 2 Backups"]')!.getBoundingClientRect().bottom,
+    fieldBottom: document.querySelector<HTMLElement>('.battlefield')!.getBoundingClientRect().bottom,
+  }));
+  expect(browsedBottom.rowBottom).toBeLessThanOrEqual(browsedBottom.fieldBottom + 1);
   const hiddenControls = await page.locator('.top-actions button, .phase-controls button, .choice-actions button').evaluateAll(nodes => nodes.flatMap(node => {
     const r = node.getBoundingClientRect();
     const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
@@ -83,6 +149,32 @@ test('crowded battlefield separates both players and controls stay reachable', a
       ? [(node.textContent ?? '').trim()] : [];
   }));
   expect.soft(hiddenControls, 'Visible controls must be inside the viewport and receive pointer input').toEqual([]);
+});
+
+test('attack party selection submits all selected Forwards together', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#scenario-select').selectOption('party-first-strike');
+  await page.getByRole('button', { name: 'Start scenario' }).click();
+  const members = page.locator('[aria-label="Player 2 Forwards"] [data-card]');
+  const count = await members.count();
+  expect(count).toBeGreaterThanOrEqual(2);
+  for (let index = 0; index < 2; index += 1) {
+    await members.nth(index).click();
+    await page.getByRole('button', { name: 'Add to attack party' }).click();
+  }
+  const attack = page.getByRole('button', { name: 'Attack with 2 Forwards' });
+  await expect(attack).toBeVisible();
+  await members.nth(0).click();
+  await page.getByRole('button', { name: 'Remove from attack party' }).click();
+  await expect(page.getByRole('button', { name: 'Attack with 1 Forward' })).toBeVisible();
+  await members.nth(0).click();
+  await page.getByRole('button', { name: 'Add to attack party' }).click();
+  await expect(page.getByRole('button', { name: 'Attack with 2 Forwards' })).toBeVisible();
+  const peerHeights = await page.locator('.selected-preview button').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
+  expect(Math.max(...peerHeights) - Math.min(...peerHeights)).toBeLessThanOrEqual(1);
+  await attack.click();
+  await expect(page.getByRole('button', { name: 'Attack with 2 Forwards' })).toHaveCount(0);
+  await expect(page.locator('.event-log')).toContainText('combat attack declared');
 });
 
 test('contextual choices use consistent control heights without hiding the hand', async ({ page }, info) => {
@@ -116,38 +208,58 @@ test('deck search retains focus through a real typing sequence', async ({ page }
   await expect.soft(search).toBeFocused();
 });
 
-test('mandatory two-card discard offers revision and explicit confirmation', async ({ page }, info) => {
-  const d = driver({ phase: 'end', placements: ['P-003C', 'P-004C', 'P-005R', 'P-006R', 'P-009C', 'P-010C', 'P-015C']
-    .map(card => ({ seat: 0 as const, card, zone: 'hand' as const })) });
-  expect(d.send({ kind: 'pass' }).ok).toBe(true);
-  expect(d.send({ kind: 'pass' }).ok).toBe(true);
-  expect(d.state.choice?.min).toBe(2);
-  await start(page);
-  await page.locator('#import-save').setInputFiles({ name: 'audit-hand-limit.json', mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(createSave(d.state, []))) });
-  await expect(page.getByRole('region', { name: 'Choices' })).toContainText('discard 2 cards');
-  await capture(page, info, 'two-card-discard');
-  expect.soft(await page.getByRole('region', { name: 'Choices' }).getByRole('button', { name: /Confirm/ }).count(),
+test('multi-card mulligan order is editable and requires explicit confirmation', async ({ page }, info) => {
+  // Use the real multi-card mulligan order choice so save reconstruction remains authoritative.
+  await page.goto('/');
+  await page.locator('#match-seed').fill('2');
+  await page.getByRole('button', { name: 'New match', exact: true }).click();
+  await page.getByRole('button', { name: 'Take first turn', exact: true }).click();
+  const choicePanel = page.getByRole('region', { name: 'Required choice' });
+  await page.getByRole('button', { name: 'Redraw', exact: true }).click();
+  await expect(choicePanel).toContainText('Choose order 0/5');
+  await capture(page, info, 'five-card-mulligan-order');
+  expect.soft(await choicePanel.getByRole('button', { name: /Confirm/ }).count(),
     'A mandatory multi-card decision needs a Confirm control').toBe(1);
-  const option = page.locator('[data-choice]').first();
-  if (await option.count()) {
-    await option.click();
-    expect.soft(await page.locator('.toast').textContent(), 'Selecting one card edits a draft instead of submitting an invalid answer').toBe('');
+  await page.getByRole('button', { name: /Inspect Player/ }).click();
+  await expect(choicePanel).toContainText('Player 1 is making a private choice');
+  await page.getByRole('button', { name: /Inspect Player/ }).click();
+  await expect(choicePanel).toContainText('Choose order 0/5');
+  const options = page.locator('[data-order-choice]');
+  for (let index = 0; index < 5; index += 1) await options.nth(index).click();
+  await expect(page.getByRole('button', { name: 'Confirm order' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Confirm order' }).click();
+  await expect(choicePanel).toContainText('Keep your opening hand or redraw it once.');
+});
+
+test('party blockers are selectable through the pass window', async ({ page }, info) => {
+  await page.goto('/');
+  await page.locator('#scenario-select').selectOption('party-first-strike');
+  await page.getByRole('button', { name: 'Start scenario' }).click();
+  const attackers = page.locator('[aria-label="Player 2 Forwards"] [data-card]');
+  for (let index = 0; index < 2; index += 1) {
+    await attackers.nth(index).click();
+    await page.getByRole('button', { name: 'Add to attack party' }).click();
   }
+  await page.getByRole('button', { name: 'Attack with 2 Forwards' }).click();
+  // Both sides pass priority before the defender gets the block window.
+  await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
+  await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
+  await expect(page.locator('[aria-label="Player 1 Forwards"] [data-card]')).toHaveCount(1);
+  await page.locator('[aria-label="Player 1 Forwards"] [data-card]').click();
+  await page.getByRole('button', { name: 'Block this attack' }).click();
+  await capture(page, info, 'party-allocation');
+  await expect(page.locator('.event-log')).toContainText('combat block declared');
+  await expect(page.locator('.event-log')).toContainText('combat blockers opened');
 });
 
 test('selected-card actions fit the footer and use equal peer button heights', async ({ page }, info) => {
-  const d = driver({ phase: 'attack', placements: [
-    { seat: 0, card: 'P-001L', zone: 'field' }, { seat: 0, card: 'P-002C', zone: 'hand' },
-    { seat: 0, card: 'P-005R', zone: 'hand' }, { seat: 1, card: 'P-024C', zone: 'field' },
-  ] });
-  await start(page);
-  await page.locator('#import-save').setInputFiles({ name: 'audit-controls.json', mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(createSave(d.state, []))) });
-  await expect(page.locator('.battlefield .card')).toHaveCount(2);
-  await page.locator(`.battlefield [data-card="${d.object(0, 'P-001L')}"]`).click();
-  await expect(page.locator('#attack-card')).toBeVisible();
-  await expect(page.locator('[data-ability]')).toHaveCount(1);
+  await page.goto('/');
+  await page.locator('#scenario-select').selectOption('party-first-strike');
+  await page.getByRole('button', { name: 'Start scenario' }).click();
+  const card = page.locator('[aria-label="Player 2 Forwards"] [data-card]').first();
+  await card.click();
+  await expect(page.locator('#toggle-party-member')).toBeVisible();
+  await page.locator('#toggle-party-member').click();
   await capture(page, info, 'selected-actions');
   const geometry = await page.locator('.selected-preview button').evaluateAll(nodes => {
     const footer = document.querySelector('.bottom-bar')!.getBoundingClientRect();

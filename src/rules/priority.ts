@@ -2,9 +2,17 @@ import { advanceTurnStep } from './turns';
 import { resolveCombat } from './combat';
 import { resolveSummon } from './summons';
 import { expireTurnEffects } from './continuous';
-import { effectivePower } from './continuous';
-import { requestDeparture } from './commander';
+import { runRuleCheckpoint } from './checkpoints';
+import { hasLegalTriggerTarget, openTriggerTargetChoice } from './triggers';
+import './delayed-script';
 import type { EngineContext, MatchState, RuleEvent, Seat, StackItem } from './types';
+
+function typedResume(context: EngineContext, card: string, ability: string) {
+  const registered = context.registry?.manifest.cards.find(item => item.number === card);
+  if (!registered || !context.registry) return undefined;
+  return context.registry.card(card).abilities.some(item => item.id === ability)
+    ? { script: card, version: registered.behaviorVersion, ability, step: 'resolve', payload: null } : undefined;
+}
 
 const other = (seat: Seat): Seat => seat === 0 ? 1 : 0;
 function event(state: MatchState, type: string, data: RuleEvent['data']): RuleEvent {
@@ -15,22 +23,32 @@ export function openTriggerOrder(state: MatchState, context: EngineContext): voi
   while (state.triggers.length > 0) {
     const group = state.triggers[0]!;
     const data = group.data as unknown as { seat: Seat; items: StackItem[] };
-    if (data.items.length === 1) {
-      state.stack.push(data.items[0]!);
+    const items = data.items.filter(item => hasLegalTriggerTarget(state, item, context));
+    if (items.length !== data.items.length) {
+      group.data = JSON.parse(JSON.stringify({ ...data, items })) as import('./types').Json;
+    }
+    if (items.length === 0) {
+      state.triggers.shift();
+      continue;
+    }
+    if (items.length === 1) {
+      state.stack.push(items[0]!);
       state.triggers.shift();
       continue;
     }
     state.choice = {
       id: `choice-${state.nextId++}`, seat: data.seat, kind: 'order',
       reason: 'Order your End Phase abilities as they are put on the stack (first selected resolves last).',
-      options: data.items.map(item => ({ id: item.id, label: context.catalog[item.lastKnown.card]?.name ?? item.handler, object: item.source })),
-      min: data.items.length, max: data.items.length, allocation: null,
+      options: items.map(item => ({ id: item.id, label: context.catalog[item.lastKnown.card]?.name ?? item.handler,
+        object: Object.values(state.cards).some(card => card.object === item.source) ? item.source : null })),
+      min: items.length, max: items.length, allocation: null,
       resume: { handler: 'trigger-order', step: 'order', data: { seat: data.seat } },
     };
     state.priority = null;
     return;
   }
-  state.priority = state.active;
+  openTriggerTargetChoice(state, context);
+  state.priority = state.choice ? null : state.active;
 }
 
 /** Run one End Phase cleanup checkpoint after both players pass. */
@@ -54,16 +72,10 @@ export function runEndCheckpoint(state: MatchState, context: EngineContext): Rul
 
   const events: RuleEvent[] = [];
   for (const instance of [...state.field]) state.cards[instance]!.damage = 0;
-  expireTurnEffects(state);
-  for (const instance of [...state.field]) {
-    const card = state.cards[instance]!;
-    if (context.catalog[card.card]?.type !== 'Forward' || effectivePower(state, card.object, context) > 0) continue;
-    const receipt = requestDeparture(state, instance, 'break', context);
-    if (receipt) events.push(event(state, 'forward.broken', { object: receipt.old.object, card: receipt.old.card, destination: 'break' }));
-    if (state.choice) break;
-  }
+  expireTurnEffects(state, context);
+  events.push(...runRuleCheckpoint(state, context));
   state.passes = 0;
-  if (state.choice || state.stack.length > 0 || state.triggers.length > 0) {
+  if (state.choice || state.execution.batch || state.stack.length > 0 || state.triggers.length > 0) {
     state.priority = state.choice ? null : state.active;
     return events;
   }
@@ -93,11 +105,17 @@ export function passPriority(state: MatchState, context: EngineContext): RuleEve
   state.passes = 0;
   if (state.stack.length > 0) {
     const item = state.stack.pop()!;
-    if (state.cards[item.lastKnown.instance]?.zone === 'stack' && context.catalog[item.lastKnown.card]?.type === 'Summon') events.push(...resolveSummon(state, item, context));
+    if (item.resume) {
+      state.execution.frames.push({
+        id: `frame-${state.nextId++}`, resume: item.resume, mode: 'stack', controller: item.controller,
+        source: item.source, lastKnown: { ...item.lastKnown }, targets: [...item.targets], selectedMode: item.mode,
+        remaining: [], returnWindow: { kind: 'priority', seat: state.active }, operationIndex: 0, scriptComplete: false,
+      });
+    } else if (state.cards[item.lastKnown.instance]?.zone === 'stack' && context.catalog[item.lastKnown.card]?.type === 'Summon') events.push(...resolveSummon(state, item, context));
     else {
-      const ability = context.handlers[item.handler];
+      const ability = context.handlers?.[item.handler];
       if (!ability) throw new Error(`No resolution handler for ${item.handler}.`);
-      const result = ability({ state, catalog: context.catalog, handlers: context.handlers, cardEffects: context.cardEffects,
+      const result = ability({ state, catalog: context.catalog, handlers: context.handlers!, registry: context.registry,
         frame: { handler: item.handler, step: 'resolve', data: item.data } });
       events.push(...result.events);
       state.work.push(...result.next);
@@ -125,26 +143,29 @@ export function passPriority(state: MatchState, context: EngineContext): RuleEve
     case 'main2': {
       state.phase = 'end';
       const grouped: Record<Seat, StackItem[]> = { 0: [], 1: [] };
-      const delayed = state.effects.filter(effect => effect.handler === 'undertow-discard' && effect.controller === state.active);
-      for (const effect of delayed) {
-        const instance = (effect.data as { instance?: unknown } | null)?.instance;
-        const source = typeof instance === 'string' ? state.cards[instance] : undefined;
-        if (!source || !context.handlers['rising-undertow-end-discard']) continue;
-        grouped[effect.controller].push({ id: `stack-${state.nextId++}`, controller: effect.controller, source: source.object,
-          lastKnown: { ...source }, handler: 'rising-undertow-end-discard', targets: [], mode: null,
-          data: { seat: effect.controller, effect: effect.id } });
-      }
-      state.effects = state.effects.filter(effect => !delayed.some(item => item.id === effect.id));
+      const delayed = state.execution.delayed.filter(effect =>
+        effect.controller === state.active && effect.at === 'controller-end' && effect.eligibleTurn <= state.turn);
+      for (const effect of delayed) grouped[effect.controller].push({
+        id: `stack-${state.nextId++}`, controller: effect.controller, source: effect.source,
+        lastKnown: { ...effect.lastKnown }, handler: 'delayed', targets: [], mode: null, data: {}, resume: effect.resume,
+      });
+      state.execution.delayed = state.execution.delayed.filter(effect => !delayed.some(item => item.id === effect.id));
       for (const instance of state.field) {
         const source = state.cards[instance]!;
         if (source.controller !== state.active) continue;
         const abilities = context.catalog[source.card]?.abilities.filter(ability =>
-          ability.kind === 'auto' && ability.trigger === 'end-phase' && context.handlers[ability.handler]) ?? [];
-        for (const ability of abilities) grouped[source.controller].push({
-          id: `stack-${state.nextId++}`, controller: source.controller, source: source.object, lastKnown: { ...source },
-          handler: ability.handler, targets: [], mode: null,
-          data: { source: source.object, seat: source.controller, ability: ability.id },
-        });
+          ability.kind === 'auto' && ability.trigger === 'end-phase' &&
+          (context.handlers?.[ability.handler] || typedResume(context, source.card, ability.id))) ?? [];
+        for (const ability of abilities) {
+          const resume = typedResume(context, source.card, ability.id);
+          grouped[source.controller].push({
+            id: `stack-${state.nextId++}`, controller: source.controller, source: source.object, lastKnown: { ...source },
+            handler: ability.handler, targets: [], mode: null,
+            data: JSON.parse(JSON.stringify({ source: source.object, seat: source.controller, ability: ability.id, targets: [],
+              ...(ability.target ? { declarationTarget: ability.target } : {}) })) as import('./types').Json,
+            ...(resume ? { resume } : {}),
+          });
+        }
       }
       for (const seat of [state.active, other(state.active)] as const) {
         if (grouped[seat].length > 0) state.triggers.push({ handler: 'trigger-order', step: 'order',

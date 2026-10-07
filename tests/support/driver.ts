@@ -3,6 +3,7 @@ import { buildFixture } from '../../src/scenarios/fixtures';
 import type { Answer, EngineContext, Intent, MatchState, ObjectId, Seat, Transition } from '../../src/rules/types';
 import type { Fixture } from '../../src/scenarios/types';
 import { context as defaultContext } from './harness';
+import { assertStable } from './assert-stable';
 
 export interface Driver {
   state: MatchState;
@@ -37,7 +38,10 @@ export function driver(input: Fixture = {}, options?: {
         seat: actor,
         intent,
       }, context);
-      if (transition.ok) state = transition.state;
+      if (transition.ok) {
+        state = transition.state;
+        if (intent.kind === 'answer') assertStable(state);
+      }
       return transition;
     },
     answer(selected, amounts = {}) {

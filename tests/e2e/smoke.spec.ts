@@ -36,18 +36,19 @@ test('starts a match, completes setup, and advances priority from the real contr
   expect(errors).toEqual([]);
 });
 
-test('keeps contextual choices in the bottom-left at both desktop sizes', async ({ page }) => {
+test('keeps contextual choices in the reserved bottom dock at both desktop sizes', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/');
   await page.getByRole('button', { name: 'New match' }).click();
-  const dock = page.getByRole('region', { name: 'Choices' });
+  const dock = page.getByRole('region', { name: 'Required choice' });
   for (const viewport of [{ width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(viewport);
     await expect(dock).toBeVisible();
     await expect.poll(() => dock.boundingBox()).not.toBeNull();
     const bounds = await dock.boundingBox();
     expect(bounds).not.toBeNull();
-    expect(bounds!.x + bounds!.width).toBeLessThan(viewport.width * 0.30);
+    expect(bounds!.x).toBe(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width * 0.56);
     expect(bounds!.y).toBeGreaterThan(viewport.height * 0.60);
   }
 });
@@ -71,7 +72,7 @@ test('pre-caches the release for a second load without network', async ({ page, 
   await page.reload();
   await expect(page.getByRole('button', { name: 'New match' })).toBeEnabled();
   await page.getByRole('button', { name: 'New match' }).click();
-  await expect(page.getByRole('region', { name: 'Choices' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Required choice' })).toBeVisible();
 });
 
 test('edits and saves a singleton deck using the accessible catalog controls', async ({ page }) => {
@@ -105,7 +106,7 @@ test('restores the exact open mulligan decision after reload', async ({ page }) 
   await expect(page.getByText('MAIN1', { exact: true })).toBeVisible();
 });
 
-test('drags a playable Forward from the fan into the battlefield at both desktop sizes', async ({ page }) => {
+test('reviews a dragged playable Forward before casting it at both desktop sizes', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -120,6 +121,11 @@ test('drags a playable Forward from the fan into the battlefield at both desktop
   const forwardName = (await handCard.locator('strong').textContent())?.trim();
   expect(forwardName).toBeTruthy();
   await handCard.dragTo(page.locator('#battlefield-drop'));
+  await expect(page.getByRole('region', { name: 'Payment draft' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Confirm cast/ })).toBeVisible();
+  await expect(page.locator('.hand-zone')).toContainText(forwardName!);
+  await expect(page.locator('.battlefield')).not.toContainText(forwardName!);
+  await page.getByRole('button', { name: /Confirm cast/ }).click();
   await expect(page.locator('.battlefield')).toContainText(forwardName!);
   await page.setViewportSize({ width: 1920, height: 1080 });
   await expect(page.getByRole('button', { name: 'Pass priority' })).toBeVisible();
@@ -130,20 +136,20 @@ test('drags a playable Forward from the fan into the battlefield at both desktop
   expect(errors).toEqual([]);
 });
 
-test('shows the real Commander beside the fan with a Commander Zone badge', async ({ page }) => {
+test('shows one physical Commander in the Commander Zone', async ({ page }) => {
   await page.goto('/');
   await page.locator('#match-seed').fill('2');
   await page.getByRole('button', { name: 'New match' }).click();
   await page.getByRole('button', { name: 'Take first turn' }).click();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
-  const tray = page.getByLabel('Playable cards from other zones');
-  await expect(tray.locator('.other-zone-badge')).toHaveText('COMMANDER ZONE');
-  await expect(tray.locator('.card')).toHaveCount(1);
-  await expect(tray.locator('.card')).toContainText(/Cinder Marshal|Tide Warden/);
+  const zone = page.locator('.own-zones');
+  await expect(zone.locator('.zone-label')).toContainText('COMMANDER ZONE');
+  await expect(zone.locator('[data-card]')).toHaveCount(1);
+  await expect(zone.locator('[data-card]')).toContainText(/Cinder Marshal|Tide Warden/);
 });
 
-test('casts the Commander directly from its tray without adding it to hand', async ({ page }) => {
+test('casts the Commander from its zone without adding it to hand', async ({ page }) => {
   await page.goto('/');
   await page.locator('#match-seed').fill('2');
   await page.getByRole('button', { name: 'New match' }).click();
@@ -156,13 +162,32 @@ test('casts the Commander directly from its tray without adding it to hand', asy
   await expect(page.getByRole('button', { name: 'Pass priority' })).toBeVisible();
   const handLabel = page.locator('.hand-zone > .zone-label');
   const handBefore = (await handLabel.textContent())?.match(/HAND\s+(\d+)/)?.[1];
-  const commander = page.locator('.other-zone-tray .card');
+  const commander = page.locator('.own-zones .card');
   await commander.click();
-  await page.getByRole('button', { name: /Cast Commander/ }).click();
+  await page.getByRole('button', { name: /Review Cast Commander/ }).click();
+  await page.getByRole('button', { name: /Confirm Commander cast/ }).click();
   await expect(page.locator('.battlefield')).toContainText('Cinder Marshal');
-  await expect(page.locator('.other-zone-tray .card')).toHaveCount(0);
+  await expect(page.locator('.own-zones .card')).toHaveCount(0);
   await expect(page.locator('.commander-status')).toContainText('Cinder Marshal');
   const handAfter = (await handLabel.textContent())?.match(/HAND\s+(\d+)/)?.[1];
   expect(handBefore).toBe('6');
   expect(handAfter).toBe('4');
+});
+
+test('reviews a targeted Summon before submitting its cast', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#scenario-select').selectOption('return-tide-affordable');
+  await page.getByRole('button', { name: 'Start scenario', exact: true }).click();
+  const tide = page.locator('[aria-label="Player 2 hand"] [data-card]').filter({ hasText: 'Return Tide' });
+  await tide.click();
+  await page.getByRole('button', { name: 'Review Summon · 2 CP', exact: true }).click();
+  const target = page.locator('[aria-label="Player 1 Forwards"] [data-card]').first();
+  await target.click();
+  await expect(page.getByRole('button', { name: 'Confirm Summon · 2 CP', exact: true })).toBeVisible();
+  await expect(page.locator('.event-log')).not.toContainText('summon cast');
+  await expect(target).toBeVisible();
+
+  await page.getByRole('button', { name: 'Confirm Summon · 2 CP', exact: true }).click();
+  await expect(page.locator('.event-log')).toContainText('Return Tide was cast.');
+  await expect(page.locator('.stack-row [data-card]')).toHaveCount(1);
 });

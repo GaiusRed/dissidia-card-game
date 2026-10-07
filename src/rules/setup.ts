@@ -3,7 +3,10 @@ import { catalogVersion } from './catalog-version';
 import { nextRandom, shuffle } from './random';
 import { moveCard } from './zones';
 import { advanceTurnStep } from './turns';
-import type { Answer, Choice, EngineContext, MatchState, RuleError, Seat, StartOptions } from './types';
+import { runScheduler } from './scheduler';
+import { RULE_ENGINE_VERSION } from './rule-scripts';
+import './setup-script';
+import type { Answer, Choice, Continuation, EngineContext, MatchState, RuleError, Seat, StartOptions } from './types';
 
 type NonFieldZone = 'deck' | 'hand' | 'break' | 'removed' | 'damage' | 'commander';
 const zones = (): Record<NonFieldZone, string[]> => ({ deck: [], hand: [], break: [], removed: [], damage: [], commander: [] });
@@ -11,7 +14,7 @@ const other = (seat: Seat): Seat => seat === 0 ? 1 : 0;
 const newChoiceId = (state: MatchState): string => 'choice-' + state.nextId++;
 
 function choice(state: MatchState, seat: Seat, kind: Choice['kind'], reason: string,
-  options: Choice['options'], min: number, max: number, step: string, data: Choice['resume']['data'] = null): void {
+  options: Choice['options'], min: number, max: number, step: string, data: Continuation['data'] = null): void {
   state.choice = {
     id: newChoiceId(state), seat, kind, reason, options, min, max, allocation: null,
     resume: { handler: 'setup', step, data },
@@ -48,12 +51,14 @@ export function createMatch(options: StartOptions, context: EngineContext): Matc
     if (errors.length) throw new Error(errors.map(item => item.message).join(' '));
   }
   const state: MatchState = {
-    versions: { schema: '1', engine: '2', format: options.format.id, catalog: catalogVersion(context.catalog) },
+    versions: { schema: '6', engine: '14', format: options.format.id,
+      catalog: catalogVersion(context.catalog, context.registry?.manifest) },
     seq: 0, rng: options.seed >>> 0, nextId: 0, format: options.format,
     turn: 0, active: 0, firstPlayer: 0, phase: 'setup', priority: null, passes: 0,
     cards: {}, zones: { 0: zones(), 1: zones() }, field: [], stackCards: [],
     commanders: { 0: { instance: '', casts: 0 }, 1: { instance: '', casts: 0 } },
     stack: [], effects: [], triggers: [], work: [], choice: null, combat: null, result: null,
+    execution: { frames: [], batch: null, returnWindow: { kind: 'priority', seat: 0 }, delayed: [] },
   };
   const manifests = options.decks;
   for (const seat of [0, 1] as const) {
@@ -82,15 +87,22 @@ export function createMatch(options: StartOptions, context: EngineContext): Matc
   const draw = nextRandom(state.rng);
   state.rng = draw.seed;
   const chooser: Seat = draw.value < 0.5 ? 0 : 1;
-  choice(state, chooser, 'starting-player', 'Choose whether you take the first turn.',
-    [{ id: 'first', label: 'Take first turn', object: null }, { id: 'second', label: 'Take second turn', object: null }],
-    1, 1, 'starting-player', null);
+  const commander = state.cards[state.commanders[chooser].instance]!;
+  const resume = { script: 'rules', version: RULE_ENGINE_VERSION, ability: 'setup', step: 'starting-player', payload: null };
+  state.execution.frames.push({
+    id: `frame-${state.nextId++}`, resume, mode: 'rule', controller: chooser, source: commander.object,
+    lastKnown: { ...commander }, targets: [], selectedMode: null, remaining: [],
+    returnWindow: { kind: 'priority', seat: chooser }, operationIndex: 0, scriptComplete: false,
+  });
+  const scheduled = runScheduler(state, context);
+  if (scheduled.error) throw new Error(scheduled.error.message);
   return state;
 }
 
 export function answerChoice(state: MatchState, answer: Answer, seat: Seat, context: EngineContext): RuleError[] {
   const pending = state.choice;
   if (!pending || pending.id !== answer.choice) return [{ code: 'STALE_CHOICE', message: 'That decision is no longer open.' }];
+  if ('script' in pending.resume) return [{ code: 'UNKNOWN_RESUME', message: 'The saved choice has no registered resolver.' }];
   if (pending.seat !== seat) return [{ code: 'WRONG_ACTOR', message: 'The other player must make this decision.' }];
   if (answer.selected.length < pending.min || answer.selected.length > pending.max) {
     return [{ code: 'WRONG_SELECTION_COUNT', message: 'Select the required number of options.' }];

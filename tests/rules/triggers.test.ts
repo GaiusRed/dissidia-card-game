@@ -3,6 +3,7 @@ import { effectivePower } from '../../src/rules/continuous';
 import { applyCommand } from '../../src/rules/engine';
 import { requestDeparture } from '../../src/rules/commander';
 import { context, fixture } from '../support/harness';
+import { opusPhRegistry } from '../../src/content/manifest';
 
 describe('automatic abilities', () => {
   it('puts an entry ability on the stack and asks its controller to choose a Forward', () => {
@@ -15,29 +16,35 @@ describe('automatic abilities', () => {
     const first = Object.values(state.cards).find(card => card.card === 'P-003C')!;
     const second = Object.values(state.cards).find(card => card.card === 'P-004C')!;
     const target = Object.values(state.cards).find(card => card.card === 'P-023C')!;
+    const engine = { ...context, registry: opusPhRegistry };
     const cast = applyCommand(state, { id: 'reaver-cast', expectedSeq: state.seq, seat: 0, intent: {
       kind: 'cast', source: reaver.object, targets: [], mode: null, payment: {
         discard: [first.object, second.object], dullBackups: [], specialDiscard: null, dullSource: false, sacrificeSource: false,
         sourceElements: { [first.object]: 'Fire', [second.object]: 'Fire' }, spend: { Fire: 3 },
       },
-    } }, context);
+    } }, engine);
     expect(cast.ok).toBe(true);
     if (!cast.ok) return;
     state = cast.state;
     expect(state.stack).toHaveLength(1);
-    for (const seat of [1, 0] as const) {
-      const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
+    expect(state.stack[0]?.resume).toEqual({ script: 'P-007H', version: '1', ability: 'dusk-reaver-enter', step: 'resolve', payload: null });
+    expect(state.choice?.seat).toBe(0);
+    const declaration = state.choice!;
+    const declared = applyCommand(state, { id: 'reaver-target-declaration', expectedSeq: state.seq, seat: 0, intent: {
+      kind: 'answer', answer: { choice: declaration.id, selected: [target.object], amounts: {} },
+    } }, engine);
+    expect(declared.ok).toBe(true);
+    if (!declared.ok) return;
+    state = declared.state;
+    expect(state.stack[0]?.targets).toEqual([target.object]);
+    for (const seat of [0, 1] as const) {
+      const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, engine);
       expect(passed.ok).toBe(true);
       if (!passed.ok) return;
       state = passed.state;
     }
-    expect(state.choice?.seat).toBe(0);
-    const choice = state.choice!;
-    const answered = applyCommand(state, { id: 'reaver-target', expectedSeq: state.seq, seat: 0, intent: {
-      kind: 'answer', answer: { choice: choice.id, selected: [target.object], amounts: {} },
-    } }, context);
-    expect(answered.ok).toBe(true);
-    if (answered.ok) expect(effectivePower(answered.state, target.object, context)).toBe(1000);
+    expect(state.choice).toBeNull();
+    expect(effectivePower(state, target.object, engine)).toBe(1000);
   });
 
   it('lets Quartermaster search for a Soldier and add it to its controller’s hand', () => {
@@ -56,7 +63,7 @@ describe('automatic abilities', () => {
     expect(cast.ok).toBe(true);
     if (!cast.ok) return;
     state = cast.state;
-    for (const seat of [1, 0] as const) {
+    for (const seat of [0, 1] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       state = passed.state;
@@ -90,20 +97,20 @@ describe('automatic abilities', () => {
     expect(cast.ok).toBe(true);
     if (!cast.ok) return;
     state = cast.state;
-    for (const seat of [0, 1] as const) {
+    const declaration = state.choice!;
+    const targetAnswer = applyCommand(state, { id: 'binder-declared-target', expectedSeq: state.seq, seat: 1, intent: {
+      kind: 'answer', answer: { choice: declaration.id, selected: [target.object], amounts: {} },
+    } }, context);
+    expect(targetAnswer.ok).toBe(true);
+    if (!targetAnswer.ok) return;
+    state = targetAnswer.state;
+    for (const seat of [1, 0] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       state = passed.state;
     }
-    const choice = state.choice!;
-    const answered = applyCommand(state, { id: 'binder-target', expectedSeq: state.seq, seat: 1, intent: {
-      kind: 'answer', answer: { choice: choice.id, selected: [target.object], amounts: {} },
-    } }, context);
-    expect(answered.ok).toBe(true);
-    if (answered.ok) {
-      expect(answered.state.cards[target.instance]!.dull).toBe(true);
-      expect(answered.state.cards[target.instance]!.frozen).toBe(true);
-    }
+    expect(state.cards[target.instance]!.dull).toBe(true);
+    expect(state.cards[target.instance]!.frozen).toBe(true);
   });
 
   it('lets Recovery Clerk put any card from its owner’s Break Zone on the deck bottom', () => {
@@ -123,7 +130,7 @@ describe('automatic abilities', () => {
     } }, context);
     if (!activated.ok) throw new Error(`${activated.error.code}: ${activated.error.message}`);
     state = activated.state;
-    for (const seat of [0, 1] as const) {
+    for (const seat of [1, 0] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       state = passed.state;
@@ -145,17 +152,20 @@ describe('automatic abilities', () => {
     }
     expect(state.phase).toBe('end');
     expect(state.stack).toHaveLength(1);
+    const declaration = state.choice!;
+    const declared = applyCommand(state, { id: 'mist-declared-target', expectedSeq: state.seq, seat: 1, intent: {
+      kind: 'answer', answer: { choice: declaration.id, selected: [target.object], amounts: {} },
+    } }, context);
+    expect(declared.ok).toBe(true);
+    if (!declared.ok) return;
+    state = declared.state;
     for (const seat of [1, 0] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       state = passed.state;
     }
-    const choice = state.choice!;
-    const answered = applyCommand(state, { id: 'mist-target', expectedSeq: state.seq, seat: 1, intent: {
-      kind: 'answer', answer: { choice: choice.id, selected: [target.object], amounts: {} },
-    } }, context);
-    expect(answered.ok).toBe(true);
-    if (answered.ok) expect(answered.state.cards[target.instance]!.dull).toBe(false);
+    expect(state.choice).toBeNull();
+    expect(state.cards[target.instance]!.dull).toBe(false);
   });
 
   it('lets Ember Medic return a Forward from Break Zone after sacrificing itself', () => {
@@ -176,7 +186,7 @@ describe('automatic abilities', () => {
     if (!activated.ok) throw new Error(`${activated.error.code}: ${activated.error.message}`);
     state = activated.state;
     expect(state.cards[source.instance]!.zone).toBe('break');
-    for (const seat of [1, 0] as const) {
+    for (const seat of [0, 1] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       state = passed.state;
@@ -202,17 +212,18 @@ describe('automatic abilities', () => {
     } }, context);
     if (!cast.ok) throw new Error(cast.error.message);
     state = cast.state;
-    for (const seat of [0, 1] as const) {
+    const declaration = state.choice!;
+    const targetAnswer = applyCommand(state, { id: 'tide-declared-target', expectedSeq: state.seq, seat: 1, intent: {
+      kind: 'answer', answer: { choice: declaration.id, selected: [target.object], amounts: {} },
+    } }, context);
+    if (!targetAnswer.ok) throw new Error(targetAnswer.error.message);
+    state = targetAnswer.state;
+    for (const seat of [1, 0] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       state = passed.state;
     }
-    const choice = state.choice!;
-    const answered = applyCommand(state, { id: 'tide-entry-target', expectedSeq: state.seq, seat: 1, intent: {
-      kind: 'answer', answer: { choice: choice.id, selected: [target.object], amounts: {} },
-    } }, context);
-    expect(answered.ok).toBe(true);
-    if (answered.ok) expect(answered.state.cards[target.instance]!.dull).toBe(false);
+    expect(state.cards[target.instance]!.dull).toBe(false);
   });
 
   it('Archive Keeper draws one and makes its controller discard one on entry', () => {
@@ -230,7 +241,7 @@ describe('automatic abilities', () => {
     } }, context);
     if (!cast.ok) throw new Error(cast.error.message);
     state = cast.state;
-    for (const seat of [0, 1] as const) {
+    for (const seat of [1, 0] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       state = passed.state;
@@ -252,23 +263,28 @@ describe('automatic abilities', () => {
       { seat: 0, card: 'P-004C', zone: 'field' },
     ] });
     const state = h.state;
+    const engine = { ...context, registry: opusPhRegistry };
     const leaving = Object.values(state.cards).find(card => card.card === 'P-003C')!;
     const target = Object.values(state.cards).find(card => card.card === 'P-004C')!;
-    requestDeparture(state, leaving.instance, 'break', context);
+    requestDeparture(state, leaving.instance, 'break', engine);
     expect(state.cards[leaving.instance]!.zone).toBe('break');
     expect(state.stack).toHaveLength(1);
+    expect(state.stack[0]?.resume).toMatchObject({ script: 'P-014R', ability: 'cinder-witness-leave' });
+    const declaration = state.choice!;
+    const declared = applyCommand(state, { id: 'witness-declared-target', expectedSeq: state.seq, seat: 0, intent: {
+      kind: 'answer', answer: { choice: declaration.id, selected: [target.object], amounts: {} },
+    } }, engine);
+    expect(declared.ok).toBe(true);
+    if (!declared.ok) return;
     let current = state;
-    for (const seat of [1, 0] as const) {
-      const passed = applyCommand(current, { id: `pass-${current.seq}`, expectedSeq: current.seq, seat, intent: { kind: 'pass' } }, context);
+    current = declared.state;
+    for (const seat of [0, 1] as const) {
+      const passed = applyCommand(current, { id: `pass-${current.seq}`, expectedSeq: current.seq, seat, intent: { kind: 'pass' } }, engine);
       if (!passed.ok) throw new Error(passed.error.message);
       current = passed.state;
     }
-    const choice = current.choice!;
-    const answered = applyCommand(current, { id: 'witness-target', expectedSeq: current.seq, seat: 0, intent: {
-      kind: 'answer', answer: { choice: choice.id, selected: [target.object], amounts: {} },
-    } }, context);
-    expect(answered.ok).toBe(true);
-    if (answered.ok) expect(answered.state.cards[target.instance]!.damage).toBe(1000);
+    expect(current.choice).toBeNull();
+    expect(current.cards[target.instance]!.damage).toBe(1000);
   });
 
   it('uses the Witness card declaration to ignore Forward returns to hand', () => {
@@ -289,18 +305,19 @@ describe('automatic abilities', () => {
     const regent = Object.values(state.cards).find(card => card.card === 'P-027H')!;
     const target = Object.values(state.cards).find(card => card.card === 'P-024C')!;
     requestDeparture(state, regent.instance, 'break', context);
-    let current = state;
+    const declaration = state.choice!;
+    const declared = applyCommand(state, { id: 'regent-declared-target', expectedSeq: state.seq, seat: 1, intent: {
+      kind: 'answer', answer: { choice: declaration.id, selected: [target.object], amounts: {} },
+    } }, context);
+    if (!declared.ok) throw new Error(declared.error.message);
+    let current = declared.state;
     for (const seat of [0, 1] as const) {
       const passed = applyCommand(current, { id: `pass-${current.seq}`, expectedSeq: current.seq, seat, intent: { kind: 'pass' } }, context);
       if (!passed.ok) throw new Error(passed.error.message);
       current = passed.state;
     }
-    const choice = current.choice!;
-    const answered = applyCommand(current, { id: 'regent-target', expectedSeq: current.seq, seat: 1, intent: {
-      kind: 'answer', answer: { choice: choice.id, selected: [target.object], amounts: {} },
-    } }, context);
-    expect(answered.ok).toBe(true);
-    if (answered.ok) expect(effectivePower(answered.state, target.object, context)).toBe(0);
+    expect(current.choice).toBeNull();
+    expect(effectivePower(current, target.object, context)).toBe(0);
   });
 
   it('offers Tide Witness an optional draw when its Forward leaves the field', () => {

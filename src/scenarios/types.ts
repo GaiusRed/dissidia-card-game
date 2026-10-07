@@ -20,6 +20,8 @@ export interface Fixture {
 }
 export interface ScenarioDefinition {
   id: string;
+  /** Bump whenever the deterministic origin changes. */
+  version: number;
   title: string;
   purpose: string;
   rules: string[];

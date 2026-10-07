@@ -2,26 +2,29 @@ import { describe, expect, it } from 'vitest';
 import { applyCommand } from '../../src/rules/engine';
 import { continueDamageEx, dealPlayerDamage } from '../../src/rules/damage';
 import { moveCard } from '../../src/rules/zones';
+import { runScheduler } from '../../src/rules/scheduler';
 import { context, fixture } from '../support/harness';
+import { opusPhRegistry } from '../../src/content/manifest';
 import type { MatchState, Seat } from '../../src/rules/types';
 
-function send(state: MatchState, seat: Seat, intent: Parameters<typeof applyCommand>[1]['intent']): MatchState {
-  const result = applyCommand(state, { id: `ex-${state.seq}`, expectedSeq: state.seq, seat, intent }, context);
+function send(state: MatchState, seat: Seat, intent: Parameters<typeof applyCommand>[1]['intent'], engine = context): MatchState {
+  const result = applyCommand(state, { id: `ex-${state.seq}`, expectedSeq: state.seq, seat, intent }, engine);
   if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
   return result.state;
 }
-function passBoth(state: MatchState, order: [Seat, Seat]): MatchState {
+function passBoth(state: MatchState, order: [Seat, Seat], engine = context): MatchState {
   void order;
-  for (let i = 0; i < 2; i += 1) state = send(state, state.priority!, { kind: 'pass' });
-  if (state.combat?.step === 'block') state = send(state, state.priority!, { kind: 'block', blocker: null });
+  for (let i = 0; i < 2; i += 1) state = send(state, state.priority!, { kind: 'pass' }, engine);
+  if (state.combat?.step === 'block') state = send(state, state.priority!, { kind: 'block', blocker: null }, engine);
   if (state.combat?.step === 'damage') {
-    for (let i = 0; i < 2; i += 1) state = send(state, state.priority!, { kind: 'pass' });
+    for (let i = 0; i < 2; i += 1) state = send(state, state.priority!, { kind: 'pass' }, engine);
   }
   return state;
 }
 
 describe('EX Burst', () => {
   it('resolves Scorch from damage and offers a Forward target', () => {
+    const engine = { ...context, registry: opusPhRegistry };
     const h = fixture({ phase: 'attack', active: 1, priority: 1, placements: [
       { seat: 1, card: 'P-023C', zone: 'field' }, { seat: 0, card: 'P-003C', zone: 'field' },
       { seat: 0, card: 'P-004C', zone: 'field' },
@@ -29,21 +32,21 @@ describe('EX Burst', () => {
     let state = h.state;
     const attacker = Object.values(state.cards).find(card => card.card === 'P-023C')!;
     const target = Object.values(state.cards).find(card => card.card === 'P-004C')!;
-    state = send(state, 1, { kind: 'attack', members: [attacker.object] });
-    state = passBoth(state, [0, 1]);
+    state = send(state, 1, { kind: 'attack', members: [attacker.object] }, engine);
+    state = passBoth(state, [0, 1], engine);
     expect(state.zones[0].damage).toHaveLength(1);
     expect(state.stack).toEqual([]);
     expect(state.priority).toBeNull();
     expect(state.choice?.seat).toBe(0);
-    expect(state.choice?.resume.handler).toBe('scorch-ex-burst');
+    expect(state.execution.frames.at(-1)?.resume).toMatchObject({ script: 'P-015C', ability: 'scorch-ex-burst', step: 'decide' });
     expect(state.choice?.options.map(option => option.id)).toEqual(['use', 'skip']);
-    const attemptedResponse = applyCommand(state, { id: 'ex-response', expectedSeq: state.seq, seat: 1, intent: { kind: 'pass' } }, context);
+    const attemptedResponse = applyCommand(state, { id: 'ex-response', expectedSeq: state.seq, seat: 1, intent: { kind: 'pass' } }, engine);
     expect(attemptedResponse.ok).toBe(false);
     if (!attemptedResponse.ok) expect(attemptedResponse.error.code).toBe('DECISION_REQUIRED');
     state = JSON.parse(JSON.stringify(state)) as MatchState;
-    state = send(state, 0, { kind: 'answer', answer: { choice: state.choice!.id, selected: ['use'], amounts: {} } });
+    state = send(state, 0, { kind: 'answer', answer: { choice: state.choice!.id, selected: ['use'], amounts: {} } }, engine);
     expect(state.choice?.reason).toContain('Scorch EX Burst');
-    state = send(state, 0, { kind: 'answer', answer: { choice: state.choice!.id, selected: [target.object], amounts: {} } });
+    state = send(state, 0, { kind: 'answer', answer: { choice: state.choice!.id, selected: [target.object], amounts: {} } }, engine);
     expect(state.cards[target.instance]!.damage).toBe(4000);
     expect(state.cards[state.zones[0].damage[0]!]!.card).toBe('P-015C');
   });
@@ -58,7 +61,7 @@ describe('EX Burst', () => {
     state = send(state, 0, { kind: 'attack', members: [attacker.object] });
     state = passBoth(state, [1, 0]);
     expect(state.stack).toEqual([]);
-    expect(state.choice?.resume.handler).toBe('archive-keeper-ex-burst');
+    expect(state.choice?.resume).toMatchObject({ script: 'P-031R', ability: 'archive-keeper-enter', step: 'decision' });
     state = send(state, 1, { kind: 'answer', answer: { choice: state.choice!.id, selected: ['use'], amounts: {} } });
     expect(state.choice?.seat).toBe(1);
     expect(state.choice?.reason).toContain('Archive Keeper');
@@ -78,7 +81,7 @@ describe('EX Burst', () => {
     state = send(state, 0, { kind: 'attack', members: [attacker.object] });
     state = passBoth(state, [1, 0]);
     expect(state.stack).toEqual([]);
-    expect(state.choice?.resume.handler).toBe('return-tide-ex-burst');
+    expect(state.choice?.resume).toMatchObject({ script: 'P-035C', ability: 'return-tide-ex-burst', step: 'decide' });
     state = send(state, 1, { kind: 'answer', answer: { choice: state.choice!.id, selected: ['use'], amounts: {} } });
     expect(state.choice?.seat).toBe(1);
     state = send(state, 1, { kind: 'answer', answer: { choice: state.choice!.id, selected: [target.object], amounts: {} } });
@@ -93,6 +96,7 @@ describe('EX Burst', () => {
     let state = h.state;
     dealPlayerDamage(state, 1, 3, 'batch test', context);
     continueDamageEx(state, context);
+    expect(runScheduler(state, context).error).toBeNull();
     expect(state.zones[1].damage.map(instance => state.cards[instance]!.card)).toEqual(['P-031R', 'P-035C', 'P-024C']);
     expect(state.choice?.seat).toBe(1);
     expect(state.choice?.reason).toContain('Archive Keeper');
@@ -114,6 +118,7 @@ describe('EX Burst', () => {
     let state = h.state;
     dealPlayerDamage(state, 1, 2, 'two-point damage batch', context);
     continueDamageEx(state, context);
+    expect(runScheduler(state, context).error).toBeNull();
     expect(state.zones[1].damage).toHaveLength(8);
     expect(state.result).toBeNull();
     expect(state.choice?.reason).toContain('Archive Keeper');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abilityHandlers } from '../../src/content/handlers';
+import { productionContext } from '../../src/content/context';
 import { opusPh } from '../../src/content/opus-ph';
 import { cinderCompany, tidalAssembly } from '../../src/content/decks';
 import { applyCommand } from '../../src/rules/engine';
@@ -7,7 +7,7 @@ import { createMatch } from '../../src/rules/setup';
 import { mvpFormat } from '../../src/rules/format';
 import type { Command, EngineContext, Intent, MatchState, Seat } from '../../src/rules/types';
 
-const context: EngineContext = { catalog: opusPh, handlers: abilityHandlers };
+const context: EngineContext = productionContext;
 
 function send(state: MatchState, seat: Seat, intent: Intent): MatchState {
   const command: Command = { id: `duel-${state.seq}`, expectedSeq: state.seq, seat, intent };

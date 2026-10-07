@@ -1,5 +1,5 @@
 import type { CardDefinition, ChoiceOption, Element, MatchState, ObjectId, RuleEvent, Seat, Zone, CardObject } from '../types';
-import type { ChoiceRequest, DeepReadonly, ResumeStep } from './execution';
+import type { ChoiceRequest, DeepReadonly, Operation, ResumeStep } from './execution';
 
 export interface CostSpec {
   cp: number; elements: Element[]; dullSource: boolean; sacrificeSource: boolean; sameNameDiscard: boolean;
@@ -16,11 +16,11 @@ export interface TriggerSubscription {
   matches(state: DeepReadonly<MatchState>, event: DeepReadonly<RuleEvent>, source: DeepReadonly<CardObject>): boolean;
 }
 export interface FieldProvider {
-  effects(state: DeepReadonly<MatchState>, source: DeepReadonly<CardObject>): unknown[];
+  effects(state: DeepReadonly<MatchState>, source: DeepReadonly<CardObject>, catalog: Readonly<Record<string, CardDefinition>>): readonly Extract<Operation, { kind: 'power' | 'keyword' | 'control' }>[];
 }
-export interface ReplacementProposal { id: string; controller: Seat; event: RuleEvent; choice: ChoiceRequest | null }
+export interface ReplacementProposal { id: string; controller: Seat; operation: Operation; choice: ChoiceRequest | null }
 export interface ReplacementProvider {
-  propose(state: DeepReadonly<MatchState>, event: DeepReadonly<RuleEvent>, source: DeepReadonly<CardObject>): ReplacementProposal | null;
+  propose(state: DeepReadonly<MatchState>, operation: DeepReadonly<Operation>, source: DeepReadonly<CardObject>): ReplacementProposal | null;
 }
 export interface AbilityScript {
   id: string; kind: 'summon' | 'action' | 'special' | 'auto' | 'field' | 'replacement';

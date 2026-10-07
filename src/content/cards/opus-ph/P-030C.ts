@@ -1,5 +1,6 @@
 import type { AbilityHandler, CardDefinition } from '../../../rules/types';
 import { card as findCard, emit, payload, result } from '../../shared/legacy';
+import { singleActivationScript } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-030C",
@@ -35,7 +36,7 @@ export const card: CardDefinition = {
   ],
   "summonHandler": null,
   "ex": false,
-  "text": "No abilities."
+  "text": "{D}: Choose 1 Forward. Activate it."
 };
 
 const waveApprenticeActivate: AbilityHandler = context => {
@@ -48,4 +49,7 @@ const waveApprenticeActivate: AbilityHandler = context => {
 export const abilityHandlers: Readonly<Record<string, AbilityHandler>> = {
   'wave-apprentice-activate': waveApprenticeActivate,
 };
+export const script = singleActivationScript(card, ({ frame }) => [{ simultaneous: false, operations: [
+  { kind: 'status', object: frame.targets[0]!, dull: false, freeze: false },
+] }]);
 export default card;

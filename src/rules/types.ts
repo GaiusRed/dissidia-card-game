@@ -1,3 +1,7 @@
+import type { ExecutionState } from './contracts/execution';
+import type { CardRegistry } from './contracts/registry';
+import type { ResumeRef } from './contracts/execution';
+
 export type Seat = 0 | 1;
 export type CardNumber = string;
 export type InstanceId = string;
@@ -16,6 +20,7 @@ export interface AbilityDefinition {
   handler: string; text: string; ex: boolean;
   trigger?: 'enter' | 'controlled-forward-leaves' | 'self-break' | 'end-phase';
   triggerDestination?: Zone[];
+  target?: AbilityTargetRule;
   activation?: {
     cost: number; elements: Element[]; dullSource: boolean; sacrificeSource: boolean; specialDiscardName: string | null;
     target: {
@@ -23,6 +28,10 @@ export interface AbilityDefinition {
       owner: 'you' | 'any'; controller: 'you' | 'opponent' | 'any'; dull: boolean | null;
     };
   };
+}
+export interface AbilityTargetRule {
+  zones: Zone[]; types: CardDefinition['type'][]; elements: Element[];
+  owner: 'you' | 'any'; controller: 'you' | 'opponent' | 'any'; dull: boolean | null;
 }
 export interface SummonTargetRule {
   min: number; max: number; zones: Zone[]; types: CardDefinition['type'][];
@@ -48,13 +57,20 @@ export interface Choice {
   id: string; seat: Seat;
   kind: 'starting-player' | 'mulligan' | 'cards' | 'targets' | 'mode' | 'order' | 'allocation' | 'confirm';
   reason: string; options: ChoiceOption[]; min: number; max: number;
-  allocation: { total: number; increment: number } | null; resume: Continuation;
+  allocation: { total: number; increment: number } | null; resume: Continuation | ResumeRef;
 }
 export interface Answer { choice: string; selected: string[]; amounts: Record<string, number> }
 export interface Payment {
   discard: ObjectId[]; dullBackups: ObjectId[]; specialDiscard: ObjectId | null;
   dullSource: boolean; sacrificeSource: boolean; sourceElements: Record<ObjectId, Element>;
   spend: Partial<Record<Element, number>>;
+}
+export interface CostSpec {
+  amount: number;
+  elements: Element[];
+  dullSource: boolean;
+  sacrificeSource: boolean;
+  specialDiscardName: string | null;
 }
 export type Intent =
   | { kind: 'pass' }
@@ -68,7 +84,7 @@ export interface Command { id: string; expectedSeq: number; seat: Seat; intent: 
 export interface RuleEvent { id: string; type: string; data: Json }
 export interface StackItem {
   id: ObjectId; controller: Seat; source: ObjectId; lastKnown: CardObject;
-  handler: string; targets: ObjectId[]; mode: string | null; data: Json;
+  handler: string; targets: ObjectId[]; mode: string | null; data: Json; resume?: import('./contracts/execution').ResumeRef;
 }
 export interface EffectRecord {
   id: string; timestamp: number; controller: Seat; source: ObjectId;
@@ -76,7 +92,8 @@ export interface EffectRecord {
 }
 export interface CombatState {
   step: 'prepare' | 'declare' | 'block' | 'firstStrike' | 'damage' | 'normalDamage' | 'finish';
-  attackers: ObjectId[]; blocker: ObjectId | null; wasBlocked: boolean;
+  participants: CardObject[];
+  attackers: ObjectId[]; blocker: ObjectId | null; wasBlocked: boolean; partyFirstStrike: boolean;
   allocation: Record<ObjectId, number>;
 }
 export interface Result { winner: Seat | null; reason: 'damage' | 'deckout' | 'concede' | 'simultaneous' | 'loop' }
@@ -89,6 +106,7 @@ export interface MatchState {
   commanders: Record<Seat, { instance: InstanceId; casts: number }>;
   stack: StackItem[]; effects: EffectRecord[]; triggers: Continuation[];
   work: Continuation[]; choice: Choice | null; combat: CombatState | null; result: Result | null;
+  execution: ExecutionState;
 }
 export interface StartOptions { seed: number; decks: [DeckList, DeckList]; format: FormatProfile }
 export interface RuleError { code: string; message: string }
@@ -98,7 +116,7 @@ export type Transition =
 export interface ActionOffer {
   id: string; kind: Intent['kind']; source: ObjectId | null; label: string; ability: string | null;
   targetOptions: ChoiceOption[]; minTargets: number; maxTargets: number;
-  modes: ChoiceOption[]; needsPayment: boolean; payment: PaymentOffer | null;
+  modes: ChoiceOption[]; modeTargetOptions?: Record<string, ChoiceOption[]>; needsPayment: boolean; payment: PaymentOffer | null;
 }
 export interface PaymentOffer {
   cost: number; commanderTax: number; elements: Element[];
@@ -109,18 +127,14 @@ export interface CastAccess {
   source: ObjectId; sourceZone: Zone; canDeclare: boolean;
   blockedReasons: RuleError[]; displayedCost: number; commanderTax: number;
 }
-export interface CardRuntimeEffects {
-  replaceDamage?(state: MatchState, target: CardObject, amount: number, context: EngineContext): number;
-  modifyPower?(state: MatchState, target: CardObject, source: CardObject, context: EngineContext): number;
-}
 export interface EngineContext {
   catalog: Catalog;
-  handlers: Readonly<Record<string, AbilityHandler>>;
-  cardEffects?: Readonly<Record<CardNumber, CardRuntimeEffects>> | undefined;
+  registry: CardRegistry;
+  handlers?: Readonly<Record<string, AbilityHandler>>;
 }
 export interface HandlerContext {
   state: MatchState; catalog: Catalog; handlers: Readonly<Record<string, AbilityHandler>>;
-  cardEffects?: EngineContext['cardEffects']; frame: Continuation;
+  registry: CardRegistry; frame: Continuation;
 }
 export interface HandlerResult { events: RuleEvent[]; next: Continuation[]; choice: Choice | null }
 export type AbilityHandler = (context: HandlerContext) => HandlerResult;

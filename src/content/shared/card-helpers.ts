@@ -25,6 +25,16 @@ export function chooseForward(
     const data = payload(context.frame.data);
     const extra = context.frame.data && typeof context.frame.data === 'object' && !Array.isArray(context.frame.data)
       ? context.frame.data as Record<string, Json> : {};
+    const declaredTargets = Array.isArray(extra.targets) && extra.targets.every(value => typeof value === 'string')
+      ? extra.targets as string[] : [];
+    if (context.frame.step === 'resolve' && declaredTargets.length > 0) {
+      const target = card(context.state, declaredTargets[0]!);
+      if (!target || target.zone !== 'field' || context.catalog[target.card]?.type !== 'Forward') {
+        return { events: [], next: [], choice: null };
+      }
+      const result = apply(context, target);
+      return { events: Array.isArray(result) ? result : [result], next: [], choice: null };
+    }
     if (context.frame.step === 'choice') {
       const selected = Array.isArray(extra.selected) ? extra.selected[0] : undefined;
       const target = typeof selected === 'string' ? card(context.state, selected) : undefined;

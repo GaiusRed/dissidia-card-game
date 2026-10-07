@@ -4,7 +4,8 @@ import { cinderCompany, tidalAssembly } from '../../src/content/decks';
 import { assertInvariants } from '../../src/rules/invariants';
 import { nextRandom, shuffle } from '../../src/rules/random';
 import { moveCard } from '../../src/rules/zones';
-import { fixture } from '../support/harness';
+import { addPower, changeControl, effectivePower, expireTurnEffects, recomputeControl, setPower } from '../../src/rules/continuous';
+import { context, fixture } from '../support/harness';
 
 describe('deterministic match state', () => {
   it('uses a repeatable 32-bit random stream', () => {
@@ -29,6 +30,51 @@ describe('deterministic match state', () => {
     const h = fixture({});
     const instance = h.state.cards[h.state.commanders[0].instance]!.instance;
     h.state.zones[0].commander.push(instance);
-    expect(() => assertInvariants(h.state, { catalog: opusPh, handlers: {} })).toThrow(/more than one zone/i);
+    expect(() => assertInvariants(h.state, { ...context, catalog: opusPh })).toThrow(/more than one zone/i);
+  });
+
+  it('restores the earlier active control effect when a later effect expires', () => {
+    const h = fixture({ placements: [{ seat: 0, card: 'P-005R', zone: 'field' }] });
+    const target = h.state.cards[h.state.field[0]!]!;
+    h.state.turn = 4;
+    changeControl(h.state, 'effect-source-a', target.object, 1, 5);
+    changeControl(h.state, 'effect-source-b', target.object, 0, 3);
+    expect(target.controller).toBe(0);
+    expireTurnEffects(h.state, context);
+    expect(target.controller).toBe(1);
+    expect(target.controlledSinceTurn).toBe(4);
+  });
+
+  it('recomputes the effective controller from active timestamped layers', () => {
+    const h = fixture({ placements: [{ seat: 0, card: 'P-005R', zone: 'field' }] });
+    const target = h.state.cards[h.state.field[0]!]!;
+    h.state.turn = 4;
+    changeControl(h.state, 'earlier-control', target.object, 1, 5);
+    changeControl(h.state, 'expired-control', target.object, 0, 3);
+    recomputeControl(h.state, { catalog: opusPh });
+    expect(target.controller).toBe(1);
+    expect(target.controlledSinceTurn).toBe(4);
+  });
+
+  it('does not reset the control interval when an expiring layer leaves the same controller', () => {
+    const h = fixture({ placements: [{ seat: 0, card: 'P-005R', zone: 'field' }] });
+    const target = h.state.cards[h.state.field[0]!]!;
+    h.state.turn = 4;
+    changeControl(h.state, 'effect-source-a', target.object, 1, 6);
+    target.controlledSinceTurn = 2;
+    changeControl(h.state, 'effect-source-b', target.object, 1, 4);
+    expireTurnEffects(h.state, context);
+    expect(target.controller).toBe(1);
+    expect(target.controlledSinceTurn).toBe(2);
+  });
+
+  it('applies the newest base power before every additive modifier', () => {
+    const h = fixture({ placements: [{ seat: 0, card: 'P-005R', zone: 'field' }] });
+    const target = h.state.cards[h.state.field[0]!]!;
+    setPower(h.state, target.object, target.object, 5000, 3);
+    addPower(h.state, target.object, target.object, 1000, 3);
+    setPower(h.state, target.object, target.object, 7000, 3);
+    addPower(h.state, target.object, target.object, 2000, 3);
+    expect(effectivePower(h.state, target.object, { ...context, catalog: opusPh })).toBe(10000);
   });
 });

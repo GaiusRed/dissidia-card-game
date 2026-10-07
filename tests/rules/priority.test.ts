@@ -27,6 +27,38 @@ describe('priority windows', () => {
     expect(JSON.stringify(state)).toBe(before);
   });
 
+  it('retains priority for a Summon caster until the response pass', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-015C', zone: 'hand' },
+      { seat: 0, card: 'P-003C', zone: 'hand' },
+      { seat: 1, card: 'P-024C', zone: 'field' },
+    ] });
+    const source = h.object(0, 'P-015C');
+    const cp = h.object(0, 'P-003C');
+    const result = applyCommand(h.state, { id: 'summon-priority', expectedSeq: 0, seat: 0, intent: {
+      kind: 'cast', source, targets: [h.object(1, 'P-024C')], mode: null,
+      payment: { discard: [cp], dullBackups: [], specialDiscard: null, dullSource: false, sacrificeSource: false,
+        sourceElements: { [cp]: 'Fire' }, spend: { Fire: 1 } },
+    } }, context);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.state.priority).toBe(0);
+      expect(result.state.passes).toBe(0);
+    }
+  });
+
+  it('rejects an attack declaration while a stack item is pending', () => {
+    const h = fixture({ phase: 'attack', active: 0, priority: 0,
+      placements: [{ seat: 0, card: 'P-005R', zone: 'field' }] });
+    const source = h.state.cards[h.state.commanders[0].instance]!;
+    h.state.stack.push({ id: 'pending-stack', controller: 1, source: source.object, lastKnown: { ...source },
+      handler: 'test', targets: [], mode: null, data: null });
+    const result = applyCommand(h.state, { id: 'attack-over-stack', expectedSeq: 0, seat: 0,
+      intent: { kind: 'attack', members: [h.object(0, 'P-005R')] } }, context);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('WRONG_TIMING');
+  });
+
   it('advances through both Main phases and starts the next turn after End Phase passes', () => {
     let state = fixture({ phase: 'main1' }).state;
     const step = (seat: 0 | 1) => {

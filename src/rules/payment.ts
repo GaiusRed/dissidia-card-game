@@ -1,5 +1,5 @@
-import type { EngineContext, Element, MatchState, ObjectId, Payment, RuleError, RuleEvent, Seat } from './types';
-import { moveCard } from './zones';
+import type { CostSpec, EngineContext, Element, MatchState, ObjectId, Payment, RuleError, RuleEvent, Seat } from './types';
+import { prepareBatch } from './batches';
 
 function byObject(state: MatchState, object: ObjectId | null) {
   if (object === null) return undefined;
@@ -8,7 +8,7 @@ function byObject(state: MatchState, object: ObjectId | null) {
 const issue = (code: string, message: string): RuleError => ({ code, message });
 
 export function validatePayment(
-  state: MatchState, seat: Seat, source: ObjectId, payment: Payment, cost: number, context: EngineContext,
+  state: MatchState, seat: Seat, source: ObjectId, payment: Payment, spec: CostSpec, context: EngineContext,
 ): RuleError[] {
   const errors: RuleError[] = [];
   const sourceCard = byObject(state, source);
@@ -20,7 +20,7 @@ export function validatePayment(
   if (distinct.size !== sources.length || (payment.specialDiscard !== null && distinct.has(payment.specialDiscard))) {
     errors.push(issue('DUPLICATE_COST_SOURCE', 'One card cannot pay two parts of the same cost.'));
   }
-  const lightDarkTarget = sourceDefinition.elements.some(element => element === 'Light' || element === 'Dark');
+  const lightDarkTarget = spec.elements.some(element => element === 'Light' || element === 'Dark');
   const generated: Partial<Record<Element, number>> = {};
 
   for (const object of sources) {
@@ -39,7 +39,7 @@ export function validatePayment(
       errors.push(issue('INVALID_CP_ELEMENT', 'Choose an element printed on each CP source.'));
       continue;
     }
-    const sharesElement = lightDarkTarget || sourceDefinition.elements.some(item => definition.elements.includes(item));
+    const sharesElement = lightDarkTarget || spec.elements.some(item => definition.elements.includes(item));
     if (!sharesElement) errors.push(issue('INVALID_CP_SOURCE', 'The CP source must share an element with the card being played.'));
     if (payment.discard.includes(object)) {
       if (card.owner !== seat || card.controller !== seat || card.zone !== 'hand' || definition.elements.some(item => item === 'Light' || item === 'Dark')) {
@@ -60,66 +60,59 @@ export function validatePayment(
   const amounts = Object.values(payment.spend);
   if (amounts.some(amount => !Number.isInteger(amount) || amount < 0)) errors.push(issue('INVALID_CP_AMOUNT', 'CP amounts must be nonnegative whole numbers.'));
   const spent = amounts.reduce((sum, amount) => sum + amount, 0);
-  if (spent < cost) errors.push(issue('UNDERPAYMENT', 'The selected CP does not cover the full cost.'));
-  if (spent > cost) errors.push(issue('OVERPAYMENT', 'Spend exactly the required CP. Unused generated CP expires.'));
+  if (spent < spec.amount) errors.push(issue('UNDERPAYMENT', 'The selected CP does not cover the full cost.'));
+  if (spent > spec.amount) errors.push(issue('OVERPAYMENT', 'Spend exactly the required CP. Unused generated CP expires.'));
   for (const element of Object.keys(payment.spend) as Element[]) {
     if ((payment.spend[element] ?? 0) > (generated[element] ?? 0)) errors.push(issue('UNGENERATED_CP', 'Spend only CP that the selected sources generate.'));
   }
-  const matchingSpent = sourceDefinition.elements.some(element => (payment.spend[element] ?? 0) > 0);
-  if (cost > 0 && !lightDarkTarget && !matchingSpent) errors.push(issue('ELEMENT_REQUIREMENT', 'Spend at least one CP of the card’s element.'));
-  if (cost === 0 && sources.length > 0) errors.push(issue('UNNEEDED_CP', 'A zero-cost action does not need CP sources.'));
+  const matchingSpent = spec.elements.some(element => (payment.spend[element] ?? 0) > 0);
+  if (spec.amount > 0 && !lightDarkTarget && !matchingSpent) errors.push(issue('ELEMENT_REQUIREMENT', 'Spend at least one CP of the card’s element.'));
+  if (spec.amount === 0 && sources.length > 0) errors.push(issue('UNNEEDED_CP', 'A zero-cost action does not need CP sources.'));
+  const excess = Object.entries(generated).reduce((sum, [element, amount]) => sum + Math.max(0, amount! - (payment.spend[element as Element] ?? 0)), 0);
+  if (excess > 1) errors.push(issue('EXCESS_CP', 'Unused CP cannot exceed one point.'));
+  for (const object of sources) {
+    const element = payment.sourceElements[object];
+    const amount = payment.discard.includes(object) ? 2 : 1;
+    if (element && (generated[element] ?? 0) - amount >= (payment.spend[element] ?? 0)) {
+      errors.push(issue('EXCESS_CP_SOURCE', 'Every selected CP source must be needed to pay the declared cost.'));
+    }
+  }
 
   const special = byObject(state, payment.specialDiscard);
   if (payment.specialDiscard !== null) {
     const specialDefinition = special ? context.catalog[special.card] : undefined;
-    if (!special || special.owner !== seat || special.zone !== 'hand' || special.object === source ||
-        !specialDefinition || specialDefinition.name !== sourceDefinition.name) {
+    if (!spec.specialDiscardName || !special || special.owner !== seat || special.zone !== 'hand' || special.object === source ||
+        !specialDefinition || specialDefinition.name !== spec.specialDiscardName) {
       errors.push(issue('INVALID_SPECIAL_DISCARD', 'Special discard requires another card with the same name in your hand.'));
     }
   }
-  if (payment.dullSource || payment.sacrificeSource) {
+  if (payment.dullSource !== spec.dullSource || payment.sacrificeSource !== spec.sacrificeSource ||
+      ((payment.specialDiscard !== null) !== (spec.specialDiscardName !== null))) {
+    errors.push(issue('INVALID_COST_COMPONENTS', 'Payment components must match the declared ability cost.'));
+  }
+  if (spec.dullSource || spec.sacrificeSource) {
     if (sourceCard.zone !== 'field' || sourceCard.controller !== seat) {
       errors.push(issue('INVALID_ABILITY_SOURCE', 'This ability requires its source on your field under your control.'));
     }
-    if (payment.dullSource && sourceCard.dull) errors.push(issue('SOURCE_ALREADY_DULL', 'The ability source must be active.'));
+    if (spec.dullSource && sourceCard.dull) errors.push(issue('SOURCE_ALREADY_DULL', 'The ability source must be active.'));
   }
   return errors;
 }
 
 export function commitPayment(
-  state: MatchState, seat: Seat, source: ObjectId, payment: Payment, cost: number, context: EngineContext,
+  state: MatchState, seat: Seat, source: ObjectId, payment: Payment, spec: CostSpec, context: EngineContext,
 ): RuleEvent[] {
   const found = byObject(state, source);
   if (!found) throw new Error('Payment source disappeared before commitment.');
-  const errors = validatePayment(state, seat, source, payment, cost, context);
+  const errors = validatePayment(state, seat, source, payment, spec, context);
   if (errors.length) throw new Error(errors.map(error => error.message).join(' '));
-  const events: RuleEvent[] = [];
-  const emit = (type: string, object: ObjectId) => events.push({
-    id: 'event-' + state.nextId++, type, data: { card: object, seat },
-  });
-  for (const object of payment.discard) {
-    const card = byObject(state, object)!;
-    const old = moveCard(state, card.instance, 'break');
-    emit('card.discarded', old.object);
-  }
-  for (const object of payment.dullBackups) {
-    const card = byObject(state, object)!;
-    card.dull = true;
-    emit('backup.dulled-for-cp', object);
-  }
-  if (payment.specialDiscard !== null) {
-    const card = byObject(state, payment.specialDiscard)!;
-    const old = moveCard(state, card.instance, 'break');
-    emit('card.discarded-for-special', old.object);
-  }
+  const operations: import('./contracts/execution').Operation[] = [];
+  if (payment.discard.length > 0) operations.push({ kind: 'discard', seat, objects: [...payment.discard], reason: 'cost' });
+  if (payment.specialDiscard !== null) operations.push({ kind: 'discard', seat, objects: [payment.specialDiscard], reason: 'special-cost' });
+  for (const object of payment.dullBackups) operations.push({ kind: 'status', object, dull: true, freeze: false });
   const abilitySource = byObject(state, source);
-  if (abilitySource && payment.dullSource) {
-    abilitySource.dull = true;
-    emit('ability.source-dulled', source);
-  }
-  if (abilitySource && payment.sacrificeSource) {
-    const old = moveCard(state, abilitySource.instance, 'break');
-    emit('ability.source-sacrificed', old.object);
-  }
-  return events;
+  if (abilitySource && spec.dullSource) operations.push({ kind: 'status', object: abilitySource.object, dull: true, freeze: false });
+  if (abilitySource && spec.sacrificeSource) operations.push({ kind: 'move', object: abilitySource.object, to: 'break', index: null });
+  if (operations.length > 0) state.execution.batch = prepareBatch(state, { simultaneous: true, operations }, context);
+  return [];
 }

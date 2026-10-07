@@ -1,6 +1,9 @@
 import type { AbilityHandler, CardDefinition } from '../../../rules/types';
 import { chooseForward } from '../../shared/card-helpers';
 import { emit } from '../../shared/legacy';
+import type { CardScript } from '../../../rules/contracts/card-script';
+import { z } from 'zod';
+import { selfEntryTrigger } from '../../shared/script-helpers';
 
 const frostBinderEnter: AbilityHandler = chooseForward('Frost Binder', (context, target) => {
   target.dull = true;
@@ -35,13 +38,23 @@ export const card: CardDefinition = {
       "id": "frost-binder-enter",
       "kind": "auto",
       "handler": "frost-binder-enter",
-      "text": "When Frost Binder enters the field, choose 1 Forward. Dull and Freeze it.",
+      "text": "When Frost Binder enters the field, choose 1 Forward. Dull it and Freeze it.",
       "ex": false,
-      "trigger": "enter"
+      "trigger": "enter",
+      "target": { "zones": ["field"], "types": ["Forward"], "elements": [], "owner": "any", "controller": "any", "dull": null }
     }
   ],
   "summonHandler": null,
   "ex": false,
-  "text": "No abilities."
+  "text": "When Frost Binder enters the field, choose 1 Forward. Dull it and Freeze it."
 };
+export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [{
+  id: 'frost-binder-enter', kind: 'auto', text: card.abilities[0]!.text, ex: false, zones: ['field'],
+  cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
+  modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
+  triggers: [selfEntryTrigger], fieldEffects: [], replacements: [],
+  steps: { resolve: { payloadSchema: z.null(), run: ({ frame }) => ({ batches: [{ simultaneous: false, operations: [
+    { kind: 'status', object: frame.targets[0]!, dull: true, freeze: true },
+  ] }], choice: null, next: null }) } },
+}] };
 export default card;

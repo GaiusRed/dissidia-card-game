@@ -1,6 +1,7 @@
 import { moveCard } from '../../../rules/zones';
 import type { AbilityHandler, CardDefinition } from '../../../rules/types';
 import { card as findCard, emit, payload, result } from '../../shared/legacy';
+import { singleActivationScript } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-013R",
@@ -26,7 +27,7 @@ export const card: CardDefinition = {
   "abilities": [
     {
       "id": "ember-medic-special",
-      "kind": "special",
+      "kind": "action",
       "handler": "ember-medic-recover",
       "text": "{Fire}, {D}, put Ember Medic into the Break Zone: Choose 1 Forward in your Break Zone. Add it to your hand.",
       "ex": false,
@@ -36,7 +37,7 @@ export const card: CardDefinition = {
   ],
   "summonHandler": null,
   "ex": false,
-  "text": "No abilities."
+  "text": "{Fire}, {D}, put Ember Medic into the Break Zone: Choose 1 Forward in your Break Zone. Add it to your hand."
 };
 
 const emberMedicRecover: AbilityHandler = context => {
@@ -49,4 +50,7 @@ const emberMedicRecover: AbilityHandler = context => {
 export const abilityHandlers: Readonly<Record<string, AbilityHandler>> = {
   'ember-medic-recover': emberMedicRecover,
 };
+export const script = singleActivationScript(card, ({ frame }) => [{ simultaneous: false, operations: [
+  { kind: 'move', object: frame.targets[0]!, to: 'hand', index: null },
+] }]);
 export default card;

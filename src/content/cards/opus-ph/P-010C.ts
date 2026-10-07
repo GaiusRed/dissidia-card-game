@@ -1,6 +1,7 @@
 import { addPower } from '../../../rules/continuous';
 import type { AbilityHandler, CardDefinition } from '../../../rules/types';
 import { card as findCard, emit, payload, result } from '../../shared/legacy';
+import { singleActivationScript } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-010C",
@@ -36,7 +37,7 @@ export const card: CardDefinition = {
   ],
   "summonHandler": null,
   "ex": false,
-  "text": "No abilities."
+  "text": "{D}: Choose 1 Fire Forward. It gains 1000 power until the end of the turn."
 };
 
 const forgeApprenticeBuff: AbilityHandler = context => {
@@ -50,4 +51,7 @@ const forgeApprenticeBuff: AbilityHandler = context => {
 export const abilityHandlers: Readonly<Record<string, AbilityHandler>> = {
   'forge-apprentice-buff': forgeApprenticeBuff,
 };
+export const script = singleActivationScript(card, ({ frame, state }) => [{ simultaneous: false, operations: [
+  { kind: 'power', source: frame.source, object: frame.targets[0]!, mode: 'add', value: 1000, expiresTurn: state.turn },
+] }]);
 export default card;

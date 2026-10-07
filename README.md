@@ -15,7 +15,7 @@ Open the localhost address printed by Vite. Choose a deck for each player. Enter
 
 The table supports opening choices, priority, Character casting, the Commander Zone, Commander tax, Forward attacks, blocking, a set of stack effects, saved decks, match recovery, JSON save export/import, and offline reload. The current interaction follows Arena's bottom hand fan, playable-card highlights, click/drag casting, target arrows, and bottom-left choice dock.
 
-The first three MVP milestones are still under implementation. See the [current audit repair plan](docs/superpowers/plans/2026-10-07-dissidia-mvp-audit-repair.md), [branch audit](docs/superpowers/audits/2026-10-07-mvp-branch-audit.md), and [rules coverage](docs/rules-coverage.md) for completed behavior and open acceptance cases. Do not use the current build as a complete FFTCG rules authority.
+The first three MVP milestones are still under implementation. See the [second audit repair plan](docs/superpowers/plans/2026-10-07-dissidia-mvp-second-audit-repair.md), [second branch audit](docs/superpowers/audits/2026-10-07-mvp-second-branch-audit.md), and [rules coverage](docs/rules-coverage.md) for completed behavior and open acceptance cases. Do not use the current build as a complete FFTCG rules authority.
 
 ## Verify
 
@@ -28,14 +28,14 @@ npm run build
 npm run test:e2e
 ```
 
-The separate UI design audit captures both desktop sizes in normal and reduced motion:
+The monitored UI design gate captures both desktop sizes in normal and reduced motion. It checks hand reachability, player/type battlefield rows, control overlap and size, choice layout, and deck search focus:
 
 ```powershell
 npm run test:ui-design
 npm run test:ui-design:report
 ```
 
-This suite currently reports known failures. See the [second audit](docs/superpowers/audits/2026-10-07-mvp-second-branch-audit.md) and [repair design](docs/superpowers/specs/2026-10-07-dissidia-mvp-second-audit-repair-design.md).
+The suite writes screenshots, traces, and an HTML report under `test-results/ui-design` and `playwright-report/ui-design`. Keep the browser failures as repair evidence; do not update snapshots to hide a layout regression. See the [second audit](docs/superpowers/audits/2026-10-07-mvp-second-branch-audit.md) and [repair design](docs/superpowers/specs/2026-10-07-dissidia-mvp-second-audit-repair-design.md).
 
 For offline installation, run `npm run build` and serve the `dist` folder. Open it once while online, wait for **Ready for offline play**, then reload with network disabled. The service worker caches this build locally.
 

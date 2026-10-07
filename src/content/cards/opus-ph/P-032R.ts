@@ -1,6 +1,7 @@
 import { moveCard } from '../../../rules/zones';
 import type { AbilityHandler, CardDefinition } from '../../../rules/types';
 import { card as findCard, emit, payload, result } from '../../shared/legacy';
+import { singleActivationScript } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-032R",
@@ -36,7 +37,7 @@ export const card: CardDefinition = {
   ],
   "summonHandler": null,
   "ex": false,
-  "text": "No abilities."
+  "text": "{Water}, {D}: Choose 1 card in your Break Zone. Put it on the bottom of your main deck."
 };
 
 const recoveryClerkBottom: AbilityHandler = context => {
@@ -49,4 +50,11 @@ const recoveryClerkBottom: AbilityHandler = context => {
 export const abilityHandlers: Readonly<Record<string, AbilityHandler>> = {
   'recovery-clerk-bottom': recoveryClerkBottom,
 };
+export const script = singleActivationScript(card, ({ frame, state }) => {
+  const target = Object.values(state.cards).find(item => item.object === frame.targets[0]);
+  if (!target) return [];
+  return [{ simultaneous: false, operations: [
+    { kind: 'move', object: frame.targets[0]!, to: 'deck', index: state.zones[target.owner].deck.length },
+  ] }];
+});
 export default card;

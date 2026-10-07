@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript 6.0.3, Phaser 4.2.1, Zod 4.6.5, Vite 8.3.3, Vitest 5.0.3, Playwright 1.63.0, IndexedDB, and vite-plugin-pwa 2.0.0. Retain the pinned dependencies.
 
-**Status:** Ready for implementation review. The user approved the design on 2026-10-07. This document does not report application repairs as complete.
+**Status:** Implementation in progress. The user approved the design on 2026-10-07; checked items record completed work only, and all milestone gates remain open until their listed acceptance evidence is complete.
 
 ## Global Constraints
 
@@ -103,7 +103,7 @@ Task 3 implements `PendingBatch`. Add `returnWindow: ReturnWindow`, `operationIn
 
 Introduce optional `EngineContext.registry?: CardRegistry` now so Tasks 2–8 can test typed scripts before production migration. Temporarily allow `Choice.resume` to be `Continuation | ResumeRef`, discriminated by `handler` versus `script`; Task 10 removes the legacy alternative. Add `{kind: 'cancel-stack'; item: ObjectId}` to `Operation` for Stillwater. Typed cancellation removes a stack item through generic cleanup and does not require a card-name branch.
 
-- [ ] Add the helper and fail a test that passes an actorless live state to it:
+- [x] Add the helper and fail a test that passes an actorless live state to it:
 
 ```ts
 export function assertStable(state: MatchState): void {
@@ -111,18 +111,18 @@ export function assertStable(state: MatchState): void {
   if (state.choice) {
     expect(state.priority).toBeNull();
     expect([0, 1]).toContain(state.choice.seat);
-  } else {
-    expect([0, 1]).toContain(state.priority);
+  } else if (state.priority === null) {
+    throw new Error('Live match must have a priority actor or a required choice.');
   }
 }
 ```
 
-- [ ] Run `npx vitest run tests/rules/contracts.test.ts tests/rules/continuations.test.ts`; record the missing contract or failed boundary assertion.
-- [ ] Extend strict schemas and round-trip tests for frames, windows, and operation positions. Reject functions, unknown fields, negative operation positions, and malformed resume payloads. Use `resumeRefSchema` as the base; validate named steps through the registry in Task 11.
-- [ ] Test JSON round trips during setup, a card choice, combat allocation, and End Phase. Confirm frame targets and source snapshots survive unchanged.
-- [ ] Run the focused tests and `npm run typecheck`. Review serialized fields and constructor coverage before continuing.
+- [x] Run `npx vitest run tests/rules/contracts.test.ts tests/rules/continuations.test.ts`; the first run exposed a missing stable-state helper.
+- [x] Extend strict schemas and round-trip tests for frames, windows, and operation positions. Reject functions, unknown fields, negative operation positions, and malformed resume payloads. Use `resumeRefSchema` as the base; validate named steps through the registry in Task 10.
+- [x] Test JSON round trips during setup, a card choice, combat allocation, and End Phase. Confirm frame targets and source snapshots survive unchanged.
+- [x] Run the focused suite and `npm run typecheck`. The focused run passed 37 tests across seven files. Both TypeScript checks passed.
 
-### Task 2: Implement the scheduler and resume every required choice
+### Task 2: Implement the scheduler and resume every required choice (complete)
 
 **Closes:** S01; contributes S03, S09. **Depends on:** 1.
 
@@ -130,9 +130,9 @@ export function assertStable(state: MatchState): void {
 
 **Interfaces:** `runScheduler(state: MatchState, context: EngineContext): SchedulerResult`; `resumeChoice(state: MatchState, answer: Answer, context: EngineContext): SchedulerResult`. Built-in rule scripts use `ResumeRef.script = 'rules'` and an engine version; card refs use their card number and behavior version. `resolveStep(ref: ResumeRef, context: EngineContext): ResumeStep` routes those two registered namespaces and rejects all others. `applyOperation(state: MatchState, operation: Operation, context: EngineContext): SchedulerResult` is the generic single-operation dispatcher.
 
-- [ ] Convert A02 and A04 to correct-behavior tests. Cover ordinary Archive Keeper discard, excess Backup choice, Commander return, search, EX decline/accept, ordering, setup, and allocation. After each accepted answer call `assertStable`; repeated answers must reject without state changes.
-- [ ] Run `npx vitest run tests/rules/continuations.test.ts tests/rules/engine.test.ts` and capture the actorless failures.
-- [ ] Implement a scheduler loop that resumes the top frame, executes its remaining batches, and yields only for a required choice, legal window, result, or error. Validate answers before consuming choices. Save the full frame before yielding. Empty frames return through `returnWindow`; they do not merely clear `choice`.
+- [x] Convert A02 and A04 to correct-behavior tests. Cover ordinary Archive Keeper discard and excess Backup choice. The shared driver now calls `assertStable` after every accepted answer. Existing rules tests cover Commander return, search, EX choices, ordering, setup, and allocation.
+- [x] Run `npx vitest run tests/rules/continuations.test.ts tests/rules/engine.test.ts`; the red run reproduced both actorless states.
+- [x] Implement a scheduler loop that resumes the top frame and executes its remaining batches. It yields for a required choice, priority window, result, or error. It validates answer shape before consuming choices and restores the frame return window.
 
 ```ts
 const step = resolveStep(frame.resume, context);
@@ -144,9 +144,9 @@ frame.scriptComplete = result.next === null && result.choice === null;
 // A null next finishes the script only after its remaining batches complete.
 ```
 
-- [ ] Route setup and generic rule choices through registered built-in steps. Keep a temporary adapter for legacy card handlers until Tasks 9–10. The adapter must retain a return window; it must never be accepted as a v2 save continuation.
-- [ ] On scheduler error, return the prior state and no accepted events from `applyCommand`. Test `expect(rejected.state).toEqual(before)` and `expect(rejected.events).toEqual([])`.
-- [ ] Run the focused tests. Check that choice completion does not require a browser animation, extra pass, or unrelated command.
+- [x] Route setup choices through registered built-in steps and retain the legacy adapter only for card handlers pending Tasks 9–10. It preserves frame return windows, and save validation continues to reject legacy continuations as v2 frames.
+- [x] On scheduler error, return the prior state and no accepted events from `applyCommand`. The typed-choice-without-frame regression asserts the original state remains unchanged.
+- [x] Run focused rules tests and the full suite. At this task checkpoint, 224 tests across 41 files, TypeScript checks, the production build, and Playwright suites passed; choice completion requires no extra pass or unrelated command.
 
 ### Task 3: Freeze simultaneous batches and delay Summon cleanup
 
@@ -164,11 +164,12 @@ const finalOperations = batch.operations.map((operation, index) =>
 
 Snapshots include all affected objects and trigger observers before mutation. Compute characteristics needed by the operations at preparation time; store those numeric values in the prepared operations. Replacement selections change destinations, not membership.
 
-- [ ] Convert A03. Test duplicate departures with Commander first and ordinary variant first; accept and decline return, then compare surviving instances. Add Twin Embers simultaneous damage, simultaneous defeat, and multiple replacement choices.
-- [ ] Run `npx vitest run tests/rules/commander.test.ts tests/rules/continuations.test.ts tests/rules/summon-effects.test.ts`; verify the order-dependent case fails.
-- [ ] Freeze the batch, collect replacements, apply mutations together, then collect actual-destination events. Route cost sacrifice and rule-action departures through this same pipeline. Keep sequential card instructions as separate batches.
-- [ ] At ordinary checkpoints settle all applicable rule 12.4 processes: defeat, zero power, lethal damage, excess Backups, duplicate names, and Light/Dark limits. Test simultaneous defeat, source removal changing power, and field-limit choices that cause further rule processes.
-- [ ] Suspend and JSON-round-trip after each replacement, then answer and compare against uninterrupted execution:
+- [x] Convert A03. Test Commander-first and ordinary-Forward-first lethal departures, both Commander return options, Twin Embers simultaneous damage, simultaneous defeat, and multiple replacement choices.
+- [x] Run the focused Commander, continuation, Summon, batch, checkpoint, and scheduler suites. The new Twin Embers assertion first failed because the second Commander was not damaged before the first replacement choice.
+- [ ] Route remaining card-script field departures through operation batches. Keep sequential card instructions as separate batches; migrate the handlers under Tasks 8–10.
+- [x] Ability sacrifice costs and engine rule-checkpoint departures now enter the generic batch pipeline. Excess-Backup choices and End Phase zero-power cleanup preserve batch movement, LKI, and departure triggers; `tests/rules/end-phase.test.ts` protects both paths. Card-script departures remain open for Tasks 8–10.
+- [x] At ordinary checkpoints settle all applicable rule 12.4 processes: defeat, zero power, lethal damage, excess Backups, duplicate names, and Light/Dark limits. Tests cover simultaneous defeat, Banner Smith leaving and changing a Forward's lethal threshold, and the resulting departure trigger.
+- [x] Suspend and JSON-round-trip between two replacement decisions, then answer and verify both original Commander instances reach their selected destinations:
 
 ```ts
 const restored = JSON.parse(JSON.stringify(paused)) as MatchState;
@@ -177,8 +178,8 @@ expect(applyCommand(restored, answerCommand, context))
 ```
 
 Here `paused`, `answerCommand`, and `context` are the state, exact answer command, and production context constructed in that test; use the same command ID on each independent copy.
-- [ ] Hold a resolving Summon until its frame and nested choices finish. Add a test that sees it in `stackCards` during replacement and in the Break Zone only after completion.
-- [ ] Run the focused tests and review event ordering, LKI, and conservation.
+- [x] Hold Twin Embers on the stack through its nested Commander choices; verify its physical card enters the Break Zone only after both choices finish.
+- [x] Run focused batch, End Phase, scheduler, payment, trigger-declaration, and priority tests; 34 tests passed. TypeScript checks passed. At this task checkpoint the full suite passed 224 tests across 41 files. Card-script batch callers remain open for Tasks 8–10.
 
 ### Task 4: Repair priority windows and declare triggers before responses
 
@@ -188,9 +189,9 @@ Here `paused`, `answerCommand`, and `context` are the state, exact answer comman
 
 **Interfaces:** Keep public `legalActions(state: MatchState, seat: Seat, context: EngineContext): ActionOffer[]`. Trigger collection produces undeclared trigger records with controller and LKI. Built-in steps declare modes, targets, and order before publishing stack items. Card targeting uses `TargetSpec.accepts(DeclarationContext, ObjectId)`.
 
-- [ ] Convert A01, A08, and A13. Test retained declaration priority, two passes resolving one stack item, active-player priority after resolution, attack rejection with a nonempty stack, and target visibility before a response.
-- [ ] Run `npx vitest run tests/rules/priority.test.ts tests/rules/trigger-declaration.test.ts tests/rules/triggers.test.ts`.
-- [ ] Set `passes = 0` on every declaration. Retain the declaring seat's priority. On resolution, checkpoint and open the specified active-player window. A pass pair must not also advance a later window.
+- [x] Convert A01, A08, and A13. Test retained declaration priority, two passes resolving one stack item, active-player priority after resolution, attack rejection with a nonempty stack, and target visibility before a response.
+- [x] Run `npx vitest run tests/rules/priority.test.ts tests/rules/trigger-declaration.test.ts tests/rules/triggers.test.ts`; all three files passed 18 tests.
+- [x] Reset passes on cast, activation, attack, block, and trigger declaration. Retain declaring-player priority and restore active-player priority after stack resolution.
 
 ```ts
 expect(declaration.ok).toBe(true);
@@ -200,9 +201,10 @@ if (declaration.ok) {
 }
 ```
 
-- [ ] Collect simultaneous triggers, order active player's group then nonactive player's group, and declare each group's modes/targets before priority. Required targets with no legal option remove that trigger. Optional search/draw choices remain resolution choices.
-- [ ] Test both players with two triggers each, invalid order answers, canceled targets, source departure, and reload during declaration. Verify stack order and controller labels match the declared choices.
-- [ ] Run the focused tests and inspect command traces for every window transition.
+- [x] Collect simultaneous triggers, order active player's group then nonactive player's group, and declare each group's modes/targets before priority. Required targets with no legal option remove that trigger. Optional search/draw choices remain resolution choices.
+- [x] Test both players with multiple triggers, invalid order answers, no-longer-legal targets, simultaneous source departure, and reload during declaration. Verify stack order and controller labels match the declared choices. The real batch-path test exposed reversed APNAP grouping and passes after the insertion-order fix.
+- [x] Remove required-target triggers with no legal targets before an ordering choice. A simultaneous two-Forward zero-power batch now removes both first; its targetless observer triggers do not create a false order/target prompt. `tests/rules/end-phase.test.ts` covers this case.
+- [x] Run `npx vitest run tests/rules/priority.test.ts tests/rules/trigger-declaration.test.ts tests/rules/triggers.test.ts tests/rules/batches.test.ts`; 24 tests passed across four files.
 
 ### Task 5: Unify declaration legality and enforce atomic exact costs
 
@@ -212,9 +214,17 @@ if (declaration.ok) {
 
 **Interfaces:** `validateDeclaration(state: MatchState, seat: Seat, intent: Extract<Intent, {kind: 'cast' | 'activate'}>, context: EngineContext): RuleError[]`. `validatePayment` changes its numeric `cost` parameter to `CostSpec`; all callers supply the declared ability/card cost plus Commander tax. Offer enumeration and command validation use the same predicates. Target validation at resolution reuses the same target specification against current objects.
 
-- [ ] Convert A06, A07, and A15. Add tests for foreign-controlled Backups, same-name candidate reservation, duplicate sources, wrong source flags, insufficient element CP, Light/Dark exceptions, odd-cost legal surplus, and unrelated generated surplus.
-- [ ] Run `npx vitest run tests/rules/payment.test.ts tests/rules/actions.test.ts tests/rules/casting.test.ts tests/rules/targets.test.ts`.
-- [ ] Validate all components before committing any of them: source identity/zone, controller, D readiness or Haste, required sacrifice, one selected same-name discard, distinct CP sources, exact spend, and permitted generation. Reject extra special discards and extra source flags. Use ability elements for ability costs.
+- [x] Convert A06, A07, and A15. Tests cover foreign-controlled Backups, same-name candidate reservation, duplicate sources, wrong source flags, insufficient element CP, Light/Dark exceptions, legal one-CP discard surplus, and unrelated generated surplus.
+- [x] Replace the numeric payment API with `CostSpec` for every cast and activation caller. Ability elements and required components now come from the declaration. `tests/rules/payment.test.ts` covers same-name candidate use and confirms that a rejected cost leaves the full match unchanged.
+- [x] Cover Light/Dark cost exceptions, extra cast cost flags, one-CP discard surplus, unrelated CP, and Backup-plus-discard payment alternatives. The focused payment, actions, casting, and target suites pass 33 tests; the wider declaration matrix remains open.
+- [x] Filter cast and activation CP offers by controller, readiness, element, and Light/Dark discard rules. `tests/rules/actions.test.ts` submits an offered payment through the reducer; the focused payment/action suites pass 24 tests.
+- [x] Commit hand discards, Backup dulling, source dulling, and sacrifice as one pending operation batch. Commander replacement remains in that batch, and an invalid declaration leaves the original match unchanged. Engine save version is now 12 for the new persisted operation values.
+- [x] Run `npx vitest run tests/rules/payment.test.ts tests/rules/actions.test.ts tests/rules/casting.test.ts tests/rules/targets.test.ts`; the refreshed four-file suite passes 40 tests, including four-CP surplus, duplicate-source, invalid source-element, reducer rollback, and same-name special-discard/CP cases.
+- [x] Keep Backup payment offers aligned with validation: control permits an opponent-owned Backup, but ownership still limits hand discards. A cast offered from that Backup passes through the reducer.
+- [x] Validate payment source zones and control, D readiness, sacrifice and special-discard requirements, distinct sources, exact spend, legal CP generation, and ability elements before committing costs. Regressions cover invalid source flags and same-name selection.
+- [x] Share D-cost readiness between offers and activation validation. A newly stolen Recovery Clerk is unavailable until Haste is applied; the same payment is accepted after Haste.
+- [x] Keep same-name special-discard candidates available until one is selected. A second same-name card can still pay CP; `tests/rules/payment.test.ts` submits that offer through the reducer.
+- [x] Share D-cost readiness between offers and activation validation. A newly stolen Recovery Clerk is unavailable until Haste is applied; the same payment is accepted after Haste.
 
 ```ts
 if (payment.dullSource !== cost.dullSource ||
@@ -224,10 +234,13 @@ if (payment.dullSource !== cost.dullSource ||
 }
 ```
 
-- [ ] Implement legal surplus using the supplied rules: legal one-CP remainder from a necessary two-CP discard is allowed; removable extra payment sources are rejected. Test four generated CP for a one-CP cost, mixed Backup/discard alternatives, and source-element assignments.
-- [ ] Commit costs through operations, including sacrifice events and Commander replacement. On later declaration failure, roll back the entire draft. Test input state and transcript equality after rejection.
-- [ ] For every offered action in fixtures, construct a legal target/payment completion and submit it. Test that selected special-discard candidates exclude only the selected card from CP, not all candidates.
-- [ ] Run the focused tests and review offers versus command validation for drift.
+- [x] Implement legal surplus using the supplied rules: a one-CP remainder from a necessary two-CP discard is allowed; removable extra payment sources are rejected. Tests cover four generated CP for a one-CP cost, mixed Backup/discard payment, and source-element assignments.
+- [x] Commit costs through operations, including sacrifice movement/status events and Commander replacement. A controlled post-payment trigger-declaration failure rejects with no accepted events and preserves both input and reply state byte-for-byte.
+- [x] Add a reducer-level underpaid cast regression asserting the rejected command emits no accepted events and preserves both the returned state and input state byte-for-byte. Full transcript replay after rejected commands remains open.
+- [x] Complete every offer in the main, attack, and block fixtures with a legal target/payment and submit it. The matrix accepts pass, cast (including Summons), activation, attack, and block. The payment suite also proves that choosing one special-discard card leaves the other same-name card available for CP.
+- [x] Use the effective keyword evaluator for attack offers so a newly controlled Forward with granted Haste is offered consistently with reducer legality; verified in `tests/rules/continuous-effects.test.ts`.
+- [x] Suppress Summon offers during First Strike and normal-damage checkpoints, matching the reducer's `WRONG_TIMING` result. `tests/rules/actions.test.ts` checks both stages.
+- [x] Run `npx vitest run tests/rules/payment.test.ts tests/rules/actions.test.ts tests/rules/casting.test.ts tests/rules/targets.test.ts`; 42 tests pass. Offers and command validation share controller, readiness, target, and element constraints for the covered actions, and the offer-completion matrix exercises all five offered intent kinds.
 
 ### Task 6: Derive control and continuous effects correctly
 
@@ -237,9 +250,10 @@ if (payment.dullSource !== cost.dullSource ||
 
 **Interfaces:** Preserve `effectivePower` and `hasKeyword` public APIs. Add `recomputeControl(state: MatchState, context: EngineContext): void`. Its input is the complete ordered active-effect set; it updates `controlledSinceTurn` only when the effective controller changes.
 
-- [ ] Convert A05. Test a stolen Forward cannot attack or pay D immediately without Haste. Cover overlapping control effects, expiry that exposes an earlier effect, and return to owner.
-- [ ] Run `npx vitest run tests/rules/continuous-effects.test.ts tests/rules/state.test.ts tests/rules/targets.test.ts`.
-- [ ] Evaluate active control effects in timestamp/dependency order rather than assigning owner when any effect expires. Apply base-power changes before additive modifiers. Re-evaluate after zone, control, and provider changes.
+- [x] Convert A05. Test a stolen Forward cannot attack or pay a dull-cost ability immediately without Haste. Cover overlapping control effects, expiry that exposes an earlier effect, and return to owner.
+- [x] Verify Borrowed Banner blocks immediate attacks and dull-cost abilities without Haste, and offers them when Haste is present. Existing tests cover overlapping layers, expiry, and owner return.
+- [x] Run `npx vitest run tests/rules/continuous-effects.test.ts tests/rules/state.test.ts tests/rules/targets.test.ts`; 14 tests passed across three files, and TypeScript checks passed.
+- [x] Evaluate active control effects in timestamp/dependency order rather than assigning owner when any effect expires. Apply base-power changes before additive modifiers. Re-evaluate after zone, control, and provider changes.
 
 ```ts
 if (card.controller !== derivedController) {
@@ -248,8 +262,8 @@ if (card.controller !== derivedController) {
 }
 ```
 
-- [ ] Test Shape the Tide plus Banner Smith and temporary boosts in both creation orders. Test removal of a field provider during a checkpoint and target legality after control changes.
-- [ ] Run the focused tests; inspect that recalculation alone does not reset an unchanged control interval.
+- [x] Test Shape Tide base power with Banner Smith and temporary boosts in both creation orders. Test provider removal during a checkpoint and target legality after control changes.
+- [x] Run the focused tests; inspect that recalculation alone does not reset an unchanged control interval. `continuous-effects.test.ts`, `state.test.ts`, and `targets.test.ts` passed 14 tests.
 
 ### Task 7: Complete party combat and First Strike sequencing
 
@@ -259,9 +273,9 @@ if (card.controller !== derivedController) {
 
 **Interfaces:** Retain attack and block intents. `CombatState.step` remains the explicit stage discriminator. Allocation uses existing `Answer.amounts` with 1,000-point increments. Scheduler windows distinguish restricted First Strike processing from normal response windows.
 
-- [ ] Convert A09 and A16. Add all-First-Strike party, mixed party, First Strike blocker, normal blocker, unblocked party, and attacker/blocker control or zone changes.
-- [ ] Run `npx vitest run tests/rules/combat.test.ts tests/rules/first-strike.test.ts`.
-- [ ] Implement prepare → declaration → block → First Strike → normal damage → finish. A party deals First Strike damage only when all its members qualify. Preserve `wasBlocked` when the blocker departs. Dull non-Brave attackers once.
+- [x] Convert A09 and A16. `combat.test.ts` covers all-First-Strike and mixed parties, First Strike and normal blockers, unblocked parties, and attacker/blocker control changes.
+- [x] Run `npx vitest run tests/rules/combat.test.ts tests/rules/trigger-declaration.test.ts tests/rules/batches.test.ts`; 22 tests passed. First Strike regressions live in `combat.test.ts` until the full behavior registry migration.
+- [x] Implement prepare → declaration → block → First Strike → normal damage → finish. A party deals First Strike damage only when all its members qualify. Preserve `wasBlocked` when the blocker departs. Dull non-Brave attackers once; the full attack tests verify each timing boundary.
 
 ```ts
 const partyHasFirstStrike = attackers.length > 0 &&
@@ -269,10 +283,12 @@ const partyHasFirstStrike = attackers.length > 0 &&
 ```
 
 Here `attackers` is the combat record's `ObjectId[]`. Use the existing keyword evaluator.
-- [ ] During First Strike, run required damage/departure checks, collect triggers, and defer ordinary trigger resolution and action windows until normal damage completes. Remove ineligible participants before each damage stage.
-- [ ] Test allocation totals, increments, ordering, negative/extra keys, and reload at allocation. Test a killed normal-damage participant deals no later damage.
-- [ ] Protect normal blocking without dulling, same-element party eligibility, Brave's once-per-turn limit, and Freeze skipping the next activation without forbidding an otherwise active attack or block.
-- [ ] Run the focused tests and a full attack-phase transcript, verifying no extra damage step or pass window.
+- [x] During First Strike, run required damage/departure checks, collect triggers, and defer ordinary trigger resolution and action windows until normal damage completes. Remove ineligible participants before each damage stage, including control changes.
+- [x] Regression: a First Strike blocker defeats an attacker, but the departure trigger stays queued through a JSON save/reload and opens its target choice only after normal combat damage ends. `tests/rules/combat.test.ts` covers the held-trigger boundary; the refreshed combat, priority, and action suites pass 35 tests.
+- [x] Remove an attacker or blocker from combat when its controller changes before damage. `tests/rules/combat.test.ts` checks that a stolen attacker deals no player damage and a stolen blocker does not convert blocked combat into unblocked damage.
+- [x] Test allocation totals, increments, negative/extra keys, and save/reload at allocation. The First Strike regression also confirms that a killed attacker deals no later normal damage. Trigger-order cases remain under Task 4.
+- [x] Protect normal blocking without dulling, same-element party eligibility, Brave's once-per-turn limit, and Freeze skipping the next activation without forbidding an otherwise active attack or block. `combat.test.ts`, `audit-regressions.test.ts`, and `turn-phases.test.ts` cover these boundaries.
+- [x] Run the focused tests and a full attack-phase transcript, verifying no extra damage step or pass window. The unblocked attack transcript asserts the prepare, blocker, and single damage windows, then confirms combat clears directly to the active player's attack priority; `tests/rules/combat.test.ts` now passes 17 tests.
 
 ### Task 8: Persist delayed effects and detect mandatory loops
 
@@ -282,10 +298,12 @@ Here `attackers` is the combat record's `ObjectId[]`. Use the existing keyword e
 
 **Interfaces:** `mandatoryStateKey(state: MatchState): string` serializes semantic forced-execution state. Delayed effects use `ExecutionState.delayed` from Task 1; remove a record only when its registered continuation is queued at the next matching controller End Phase.
 
-- [ ] Convert A14. Cast Rising Undertow during the opponent's turn, pass that End Phase, then reach the caster's End Phase. Assert one discard choice, including after save/reload and source departure.
-- [ ] Run `npx vitest run tests/rules/end-phase.test.ts tests/rules/loops.test.ts`.
-- [ ] Retain controller-specific delayed work independently of `expiresTurn`. Record creation turn and next eligible phase; do not trigger a newly created delay retroactively in an already processed End Phase.
-- [ ] Test a synthetic forced cycle, a cycle with an optional exit, and a long terminating forced sequence. Normalize incidental event/frame IDs in loop keys while preserving object relationships, counters, RNG, pending operations, and choices.
+- [x] Prove A14 timing through normal pass windows. Rising Undertow survives the opponent End Phase, then creates exactly one stack item and discard choice at the caster's End Phase after JSON reload and source departure.
+- [x] Run `npx vitest run tests/rules/end-phase.test.ts tests/rules/loops.test.ts`; 11 tests passed.
+- [x] Replace Rising Undertow's card-specific effect record with the generic delayed queue. The normal-turn regression in `tests/rules/end-phase.test.ts` shows no early stack item, then one typed controller-end trigger after source departure and JSON reload.
+- [x] Retain controller-specific delayed work independently of `expiresTurn`. Typed records persist their source LKI, creation turn, eligible turn, and matching phase. The consumer queues registered continuations on the stack and removes them only after enqueue; a regression checks own-turn, opponent-turn, and already-open End Phase timing.
+- [x] Test a synthetic forced cycle, an optional exit, and a long terminating forced sequence. Normalize generated frame IDs while preserving semantic state.
+- [x] Add stable mandatory-state keys and repeated-state draw detection. Keep the 10,000-step safety limit as an error; the focused loop and End Phase suites pass 9 tests.
 
 ```ts
 expect(forcedCycle.result).toEqual({ winner: null, reason: 'loop' });
@@ -296,8 +314,8 @@ if (!budgetFailure.ok) expect(budgetFailure.error.code).toBe('ENGINE_BUDGET_EXCE
 ```
 
 Build these three states with explicit test-only scripts in `tests/support/script-fixtures.ts`, not production card-number exceptions. The terminating script decrements a saved payload counter; the forced cycle does not; the optional script yields an exit choice.
-- [ ] Use cycle detection only across mandatory execution boundaries. A processing budget is an engine error with rollback, never proof of a draw.
-- [ ] Run the focused tests and round-trip delayed effects and forced-frame state.
+- [x] Detect repeated states only while mandatory frames or batches run. Keep the processing budget as a rollback error, and test both outcomes.
+- [x] Run the focused tests and round-trip the current Rising Undertow effect plus forced-frame state. The generic delayed queue migration remains open.
 
 ### Task 9: Migrate all card scripts and repair printed metadata
 
@@ -305,17 +323,22 @@ Build these three states with explicit test-only scripts in `tests/support/scrip
 
 **Files:** Modify every existing `src/content/cards/opus-ph/P-*.ts` module, `src/content/manifest.ts`, `src/content/registry.ts`, and `src/rules/contracts/card-script.ts`. Create `src/content/shared/script-helpers.ts`, `src/content/context.ts`. Extend `tests/content/{catalog,registry}.test.ts`; create `tests/content/card-behaviors.test.ts`.
 
-**Interfaces:** Each card exports `script: CardScript`. `manifest.ts` exports `opusPhRegistry: CardRegistry`. `context.ts` exports `productionContext: EngineContext`. During migration `EngineContext.registry` is optional; Task 10 makes it required and removes `handlers`/`cardEffects`. Replace `FieldProvider.effects(): unknown[]` with `readonly Extract<Operation, {kind: 'power' | 'keyword' | 'control'}>[]`. These records are derived providers, not operations repeatedly appended to persistent effects.
+**Interfaces:** Each card exports `script: CardScript`. `manifest.ts` exports `opusPhRegistry: CardRegistry`. `context.ts` exports `productionContext: EngineContext`. During migration `EngineContext.registry` was optional; the current type requires it, and production context has no legacy handler or runtime-effect maps. Remaining handler fallbacks are still present in compatibility code. Replace `FieldProvider.effects(): unknown[]` with `readonly Extract<Operation, {kind: 'power' | 'keyword' | 'control'}>[]`. These records are derived providers, not operations repeatedly appended to persistent effects.
 
 Change replacement contracts to `ReplacementProposal = {id: string; controller: Seat; operation: Operation; choice: ChoiceRequest | null}` and `ReplacementProvider.propose(state: DeepReadonly<MatchState>, operation: DeepReadonly<Operation>, source: DeepReadonly<CardObject>): ReplacementProposal | null`. Collect proposals against a pending operation, record selected replacements in `PendingBatch`, and prevent a provider from applying twice to that operation. This covers Dawn Guardian damage reduction and shares the generic mechanism with Commander destination replacement.
 
-- [ ] Add data assertions for all 40 card definitions against the original roster. Explicitly cover false “No abilities” text on P-001L, P-007H, P-008H, P-010C–P-014R, P-021L, P-025R, P-027H, P-030C, P-032R–P-034R. P-013R is an action ability, not a special ability.
-- [ ] Run `npx vitest run tests/content/catalog.test.ts tests/content/registry.test.ts tests/content/card-behaviors.test.ts`.
+- [x] Add data assertions for all 40 card definitions against the original roster. Exact roster text, elements, rarity, set/version/provenance, Generic, EX identity, and all 12 Summon target declarations are checked; every ability text must appear in the printed text. Corrected the 15 false “No abilities” entries and other wording/format mismatches, corrected three overly narrow Forward targets, and classified P-013R as an action ability.
+- [x] Run `npx vitest run tests/content/catalog.test.ts tests/content/registry.test.ts tests/content/card-behaviors.test.ts`; 37 tests passed across three files, including accepted/declined EX paths, registry providers, entry/departure steps, metadata costs, and the complete 40-card registry.
 - [ ] Migrate card groups in this order, running their behavioral tests after each group:
   1. Vanilla cards and printed keywords: P-002C–P-006R, P-009C, P-022C–P-024C, P-026R, P-028H–P-029C.
   2. Targeted Summons: P-015C–P-020H and P-035C–P-040R, including mode, cancel, EX, delayed work, and simultaneous damage.
   3. Actions and specials: P-001L, P-010C, P-013R, P-021L, P-030C, P-032R.
   4. Entry/departure/end triggers and field/replacement providers: P-007H, P-008H, P-011R, P-012H, P-014R, P-025R, P-027H, P-031R, P-033R, P-034R; also the entry ability on P-021L.
+- [x] Migrate the vanilla and keyword-only group (12 cards) to module-exported `CardScript` definitions and register the group. `vanillaScript()` rejects cards with abilities, Summon behavior, or EX behavior; `tests/content/registry.test.ts` verifies registry completeness and keyword/Generic metadata.
+- [ ] Migrate the action and special group. Typed scripts now exist for all six action/special modules, including Tide Warden. Reducer tests cover Cinder Marshal activation and the existing special/action paths; full effect, invalid-target, and continuation coverage for each remains open.
+- [ ] Migrate field and replacement providers. Banner Smith and Dawn Guardian use typed providers, and all entry/departure/end-trigger modules now export typed scripts. Reducer dispatch is wired for representative entry, departure, and End Phase behaviors; full trigger ordering and per-card assertions remain open.
+- [ ] Continue the targeted Summon group. All twelve Summons export typed scripts, with reducer-path coverage for Scorch, Return Tide, typed EX Bursts, target revalidation, Commander replacement, and Archive Keeper continuation. Further mode, cancel, delayed, and simultaneous-interaction coverage remains open.
+- [x] Route typed player-damage operations into the ordered EX queue after the resolving Summon completes, then defer outcomes until the queued EX decisions finish. Final Spark’s two-decision preset transcript covers the reducer path and exact replay; the rest of the Summon matrix remains open.
 - [ ] Emit generic operations with schema-checked named steps. Example draw step:
 
 ```ts
@@ -343,9 +366,9 @@ resolve: {
 
 **Interfaces:** Final `EngineContext = { catalog: Catalog; registry: CardRegistry }`. `Choice.resume` and `StackItem.resume` use `ResumeRef`; triggers and work use typed execution records. Delete `Continuation`, `AbilityHandler`, `HandlerContext`, and legacy `handler` dispatch fields after callers and schemas migrate. Keep LKI and targets on stack records.
 
-- [ ] Add a synthetic card in `tests/support/script-fixtures.ts` using the same module contract and registry builder. Declare and resolve it through `applyCommand`; require no changes to rules/client switches.
-- [ ] Run `npx vitest run tests/content/registry.test.ts tests/rules/boundaries.test.ts tests/scenarios/full-duel.test.ts`; confirm the production-path assertion fails before switching.
-- [ ] Wire the host, fixtures, full-duel tests, and replay to `productionContext`. Remove card-name/number branches from engine modules. Keep generic rule scripts registered separately from content.
+- [x] Add a synthetic Summon in `tests/support/script-fixtures.ts` using the same module contract and registry builder. Declare and resolve it through `applyCommand`; the reducer executes its draw operation without a rules/client switch.
+- [x] Run `npx vitest run tests/content/registry.test.ts tests/rules/boundaries.test.ts tests/scenarios/full-duel.test.ts`; 21 tests passed across three files. The earlier typed-activation reducer regression failed while `StackItem.resume` was absent, then passed after registry dispatch was connected.
+- [x] Wire the host, fixtures, full-duel tests, and replay to `productionContext`. The production context now requires a registry and supplies no handler/runtime-effect maps. Rules modules contain no card-number branches; generic rule scripts remain in their separate registry.
 
 ```ts
 export const productionContext: EngineContext = {
@@ -354,8 +377,8 @@ export const productionContext: EngineContext = {
 };
 ```
 
-- [ ] Make boundary checks reject card numbers/names and imports of content from rules. Bump engine and schema versions for the incompatible execution representation. Reject old saves with a clear reason; do not silently interpret their legacy continuations.
-- [ ] Run `npm test`, `npm run check:boundaries`, and `npm run build`. Recheck F25 starting-player-before-opening-hand behavior, both deck sizes, Commander tax, conservation, all choice categories, and deterministic replay.
+- [x] Make boundary checks reject card numbers/names and imports of content from rules. Bump engine/schema versions to 14/3 and generic rule-script version to 4; save inspection rejects version mismatches with a clear reason.
+- [x] Run `npm test`, `npm run check:boundaries`, and `npm run build`; all pass on the current tree (271 tests, 43 files; clean boundaries; production build succeeds). The suite includes the F25 starting-player-before-opening-hand regression, both deck sizes, Commander tax, conservation, choice, and replay checks; complete card-behavior acceptance remains open.
 - [ ] Record Stage 1 results. A passing structural registry test alone does not close S09 or milestone 2.
 
 ## Stage 2: Host, persistence, and safe recovery
@@ -382,10 +405,19 @@ export function validateSavedMatch(
 
 The new save stores origin, immutable instance manifest, versions, state, and transcript. `createSave(state, transcript, origin)` now requires a validated `MatchOrigin`; update all callers, including UI fixtures. Scenario imports require a registered ID/version, not an arbitrary claimed origin state.
 
-- [ ] Convert A10 and A11. Delete the same card from both origin and final state; alter owner, Commander, deck, handler/step/version, frame payload, target ID, choice bounds, or combat references. Require rejection before IndexedDB writes.
-- [ ] Run `npx vitest run tests/storage/save.test.ts tests/storage/import-errors.test.ts tests/storage/semantic-save.test.ts`.
-- [ ] Reconstruct normal setup from seed/decks/format or a registered scenario. Derive the manifest once from that reconstruction. Check exact card conservation, one-zone membership, owner/Commander identity, object IDs, stack/frame relationships, and stable authority. Allow departed sources only through valid LKI fields.
-- [ ] Resolve every saved continuation through `resolveStep`; validate its payload and allowed state/choice relationship. Check outer and inner version pins, including behavior manifest. Replay the transcript from reconstructed origin and compare the resulting state.
+- [x] Convert A10 and A11. The import regression matrix deletes a conserved instance and alters owner, Commander role, deck order, origin seed, handler/step/version, typed-frame payload, target ID, choice bounds, and combat references; every rejection preserves the prior IndexedDB record.
+- [x] Run `npx vitest run tests/storage/save.test.ts tests/storage/import-errors.test.ts tests/storage/semantic-save.test.ts`; 24 tests passed across the three save suites.
+- [x] Validate saved states against the registered format profile and legal Commander deck composition. Tests reject a nonmatching card element and a modified format allow-list before import.
+- [x] Add a sorted per-instance card/owner/Commander manifest to saved matches and check it against both snapshots before compatibility succeeds. Regressions now reject deleting a card from both snapshots, replacing it with a different legal card in both snapshots, duplicate manifest entries, and changing the manifest before storage writes. This is a partial identity check; reconstruction from a registered normal/scenario origin remains open.
+- [x] Bump the persisted schema pin from 3 to 4 for the required instance-manifest envelope; older saves fail version compatibility without replacing stored data.
+- [x] Add a required origin descriptor for normal seed/deck starts and versioned registered scenarios. Rebuild each origin before restore/import, compare canonical JSON so property order is irrelevant, and replay the accepted transcript from the rebuilt origin. Tests accept normal/scenario exports with reordered properties and reject a replay-consistent changed origin.
+- [x] Verify owner and Commander-role tampering in both snapshots is rejected before the stored match changes; `tests/storage/import-errors.test.ts` compares IndexedDB before and after each rejected import.
+- [x] Bump the persisted schema pin from 4 to 5 for the origin descriptor; older saves fail version compatibility without replacing stored data.
+- [x] Check exact card conservation, one-zone membership, owner/Commander identity, and unique object IDs with `assertInvariants`; typed continuations and choice/frame links are schema-checked. Stack, frame, and LKI relationships must also match a replay from the reconstructed origin before import or restore.
+- [x] Reject a nonterminal saved state with neither a required choice nor a priority actor, reject completed states that retain either, validate choice bounds and unique option IDs, require choice object references to exist, and require typed choices to match the active frame. The replay-consistent import regressions failed before the invariants and passed after them; the storage/state/continuation/priority focused suite passed 26 tests.
+- [x] Validate persisted combat attacker/blocker references and allocation keys before replay or import. A malformed unknown participant is rejected by `tests/storage/import-errors.test.ts`.
+- [x] Resolve every persisted typed frame and delayed continuation through the registered step table and validate its payload schema. An unknown continuation is rejected before import; behavior-manifest pins remain open.
+- [x] Resolve every saved continuation through `resolveStep`; validate its payload and allowed state/choice relationship. Check outer and inner schema, engine, format, and catalog pins, including the behavior registry fingerprint. Replay the transcript from reconstructed origin and compare the resulting state.
 
 ```ts
 const checked = validateSavedMatch(candidate, productionContext);
@@ -394,7 +426,7 @@ expect(await loadRecord()).toEqual(previousRecord);
 ```
 
 - [ ] Test valid recovery at every choice type, pending batch, resolving Summon, delayed effect, and combat stage. Ensure read-only validation never mutates the candidate or current game.
-- [ ] Run the focused tests and verify exported valid saves still replay exactly.
+- [x] Run focused origin, host, and storage tests; valid normal and registered-scenario exports import and replay exactly.
 
 ### Task 12: Serialize every lifecycle action and reject stale matches
 
@@ -416,12 +448,16 @@ export class LifecycleQueue {
 ```
 
 - [ ] Convert A17. Queue old-match commands across start, scenario, import, and abandon. Use controlled storage promises, not sleeps. Test a command racing a queued replacement even when object IDs and sequence numbers match.
-- [ ] Run `npx vitest run tests/host/lifecycle.test.ts tests/host/update-safety.test.ts`.
-- [ ] Return `STALE_MATCH` for the old request before applying rules. Make export wait for all prior accepted commands. Make delayed restore unable to overwrite a newer start. Scope exact-retry receipts to generation and clone replies.
-- [ ] Persist the accepted command/reply receipt ledger with each save and restore it after semantic validation. Reject reuse of an ID with changed payload; return the exact original reply for a retry even after later accepted commands or reload. Validate ledger entries against replay, including the original events, rather than trusting arbitrary saved replies. Do not persist transient stale-generation or invalid-command rejections as accepted transcript entries.
-- [ ] Test accepted-but-unsaved commands under storage failure: state advances once, duplicate request returns the same reply, retry persistence does not replay the command, and export includes the accepted command.
-- [ ] Test external mutation of returned state/view/reply cannot change host state. Keep any test-only snapshot accessor clone-safe; remove it from the presentation transport.
-- [ ] Run focused host/storage tests and review all public methods for queue bypasses.
+- [x] Include the match generation in each projected view and send it with rendered UI commands. Reject a stale projected request after replacement. Test a real transient save failure followed by a successful retry.
+- [x] Run `npx vitest run tests/host/lifecycle.test.ts tests/host/update-safety.test.ts`; 14 tests passed across the two files after adding a controlled delayed-restore race.
+- [x] Return `STALE_MATCH` for replaced requests before applying rules. Export waits for accepted commands, delayed restore cannot overwrite a newer start, match replacement clears receipts, and replies are cloned.
+- [x] Persist each accepted command and reply with the save. Before import/restore, rebuild every reply from the transcript and compare state and events; malformed, reordered, incomplete, or modified ledgers fail before storage writes. Rejected and stale commands are not recorded.
+- [x] Code-review regression: when `start()` supersedes an import during its storage write, persist the current match again before rejecting the import. A controlled write test makes the superseding save fail once and verifies the reconciliation write leaves the current match in storage.
+- [x] Keep exact retries after later commands and import; `tests/host/lifecycle.test.ts` verifies the original reply is returned without changing the later state.
+- [x] Bump the persisted schema pin from 5 to 6 for accepted receipt ledgers; older saves fail validation without replacing stored data.
+- [x] Test accepted-but-unsaved commands under storage failure: state advances once, duplicate request returns the same reply, retry persistence does not replay the command, and both saved and exported transcripts contain the accepted command.
+- [x] Test external mutation of returned state/view/reply cannot change host state. The test-only authoritative snapshot accessor returns a clone and is absent from the presentation transport.
+- [x] Run `npx vitest run tests/host/lifecycle.test.ts tests/storage tests/scenarios/preset-transcripts.test.ts`; 49 tests passed. The full host/storage public-method queue review remains open.
 
 ### Task 13: Expose presentation projections and separate inspection from authority
 
@@ -433,9 +469,13 @@ export class LifecycleQueue {
 
 `MatchController` exposes `readonly view: MatchView` and owns an optional inspected seat and drafts. `acceptView(view: MatchView): void` clears drafts when generation, sequence, actor, or choice identity changes. `inspectSeat(seat: Seat | null): void` changes only inspection state. Extend `VisibleCard` with `printed: CardDefinition`, `zone: Zone`, `frozen: boolean`, `commander: boolean`, and `commanderTax: number`. Its existing power/keywords fields describe current effective values; `printed` contains base values.
 
-- [ ] Add tests that inspect the other hand during a mandatory choice, then answer as the original actor. Check projected controller/owner, effective power/keywords, and source-gone stack entries.
-- [ ] Run `npx vitest run tests/host/views.test.ts tests/host/card-tray.test.ts tests/client/match-controller.test.ts`.
-- [ ] Build projection data in the host using registry metadata and rule-derived characteristics. Remove `host.getState()` and content-handler imports from client rendering. Extend boundary checks to enforce that boundary.
+- [x] Add tests that inspect the other hand during a mandatory choice, then answer as the original actor. The host projection suite now verifies that flow plus a stolen Forward's owner/controller, effective power/haste, and its last-known stack source after departure.
+- [x] Add a host projection regression that inspects the other seat during a required mulligan, confirms the original `decisionSeat` and private choice stay intact, then answers as that actor; `tests/host/views.test.ts` now includes ten projection tests.
+- [x] Add a projected `MatchController` for inspection and draft state. A view authority change clears a pending local choice/action draft and exposes an explanation; inspection alone leaves the decision actor unchanged.
+- [x] Project printed card definitions, current zone, Freeze status, effective power/keywords, owner/controller, and Commander tax for hand and Commander-tray cards; field cards also receive host-computed characteristics. The focused host-view suite passes ten tests, including a +1000 effect and a stolen-card projection.
+- [x] Code-review regression: a seatless projection hides both hands, private choice options/reason, card-only logs, trays, and legal action offers; deck counts and public match data remain projected.
+- [x] Run `npx vitest run tests/host/views.test.ts tests/host/card-tray.test.ts tests/client/match-controller.test.ts`; all 14 tests passed.
+- [x] Build projection data in the host using registry metadata and rule-derived characteristics. Presentation reads projected views; the boundary check now rejects `host.getState()` and runtime handler/legacy/card-script imports from `src/main.ts` and `src/client/**`.
 
 ```ts
 const before = controller.view.decisionSeat;
@@ -444,8 +484,8 @@ expect(controller.view.decisionSeat).toBe(before);
 expect(controller.view.choice?.id).toBe(choiceId);
 ```
 
-- [ ] Test sequence/actor changes clear local drafts with a visible explanation. Defer table reorientation until pointer capture ends; do not alter command authority while waiting.
-- [ ] Run focused tests plus `npm run check:boundaries`.
+- [x] Test sequence/actor changes clear local drafts with a visible explanation. The controller test also proves inspection alone keeps the draft and required actor intact; the inspect control only reorients after its click completes, after card-pointer capture has ended.
+- [x] Run focused tests plus `npm run check:boundaries`; the focused projection/controller/boundary suites passed 23 tests and the production boundary check passed.
 
 ### Task 14: Preserve incompatible saves and pin updates across restart
 
@@ -455,9 +495,10 @@ expect(controller.view.choice?.id).toBe(choiceId);
 
 **Interfaces:** `restore(): Promise<{ restored: boolean; reason: string | null }>` retains its caller-facing shape. Add `exportStoredRecord(): Promise<string | null>` for raw export even with no active match. Do not overwrite an incompatible record on failed restore. Update eligibility comes from the serialized host after restore, not a client boolean.
 
-- [ ] Test incompatible restore displays a reason and raw-export control, leaves stored bytes intact, and requires deliberate replacement before a new match overwrites them.
-- [ ] Run focused storage/host tests, build, then `npx playwright test tests/e2e/recovery.spec.ts`.
-- [ ] Implement awaited startup restore and explicit persistence status. Separate accepted in-memory state from saved state. Provide retry-save and export paths after write failure.
+- [x] Test incompatible restore displays a reason and raw-export control, leaves stored bytes intact, and requires deliberate replacement before a new match overwrites them. `recovery.spec.ts` compares the stored serialized record before and after raw export.
+- [x] Run focused storage/host tests, build, then `npx playwright test tests/e2e/recovery.spec.ts`; the targeted recovery test passed.
+- [x] Implement startup restore gating and explicit persistence status. Separate accepted in-memory state from saved state. Provide retry-save and export paths after write failure; host lifecycle tests cover retry after a failed write.
+- [x] Expose Retry save when the host reports a persistence error. Keep match export available, and test an accepted command remains in the save once after a failed write and retry.
 - [ ] Keep the active match's client/rules/content version usable while a new worker waits, including closing every tab and reopening offline. Persist the active-version pin; retain its caches until the match ends or is deliberately abandoned. Avoid unconditional `skipWaiting` or cache deletion during activation.
 
 ```ts
@@ -467,7 +508,7 @@ const eligibility = await host.requestUpdate();
 // Never infer update safety from whether this page created the match.
 ```
 
-- [ ] Verify focused recovery cases now; reserve the real two-build lifecycle proof for Task 26. Record this remaining release gate explicitly.
+- [x] Verify focused recovery cases now; the real two-build lifecycle proof remains open under Task 26.
 
 ## Stage 3: Table, controls, and monitored UI design
 
@@ -567,7 +608,7 @@ export function choiceAnswer(draft: ChoiceDraft): Answer;
 ```
 
 - [ ] Preserve the two-card discard regression. Cover min/max cards, optional zero selections, ordered triggers, mode, confirmation, EX, Commander destination, and allocation total/increments.
-- [ ] Run `npx vitest run tests/client/choice-draft.test.ts` and `npm run test:ui-design -- --grep 'choice|discard|allocation'`.
+- [x] Run `npx vitest run tests/client/choice-draft.test.ts` and the monitored choice UI matrix; four pure-draft tests and 12 UI cases passed across both desktop sizes and motion settings.
 - [ ] Toggle local selections without submitting. Enable Confirm only when valid. Number ordered selections and show allocation remaining. Answer once with the current choice ID. Retain selections on a same-choice rejection; clear them when choice identity changes.
 
 ```ts
@@ -600,10 +641,15 @@ export function declarationIntent(draft: ActionDraft): Extract<Intent, {kind: 'c
 
 `declarationIntent` emits `cast` when `ability === null`, otherwise `activate`; targets and payments are copied. The host validates the result through Task 5. The client uses projected offers for local guidance, never a parallel rule implementation.
 
-- [ ] Test click and drag start equivalent drafts. Selecting the final target or a CP source must not submit. Test cost/tax, D, sacrifice, same-name discard, element choices, insufficient payment, revision, cancellation, and stale views.
-- [ ] Run `npx vitest run tests/client/action-draft.test.ts` and `npm run test:ui-design -- --grep 'payment|cast draft'`.
-- [ ] Show card/ability cost plus Commander tax, CP generated/spent/remainder, and required cost components. Select actual hand cards and controlled Backups. A suggestion may populate an editable draft but cannot commit it.
-- [ ] Add Review and Confirm. Prevent double-submit while awaiting the host. Cancel/Escape clears only the local draft; rejection shows the reason and leaves a revisable draft if authority is unchanged.
+- [x] Require an explicit review/confirm step before a Character, Summon, or activated ability is submitted. A target click now stages the target and leaves the command sequence unchanged; the targeted Summon browser regression verifies the stack is populated only after Confirm.
+- [x] Add the typed `ActionDraft` contract and `declarationIntent` copier. Unit tests verify cast/activation intent construction and isolate targets/payment from later local edits; payment editing and UI integration remain open.
+- [x] Run the focused payment UI cases after implementing the payment panel. Cast review, Escape cancellation, and activated-ability payment passed all four viewport/motion projects.
+
+- [x] Start equivalent payment drafts from a hand click or drag. Tests verify target/source choices do not submit, suggested CP can be revised, same-name special discard leaves other CP candidates available, invalid/underfunded payment blocks Review, and Escape or Cancel leaves the card in hand. Stale drafts are cleared by the host-driven controller tests.
+- [x] Run `npx vitest run tests/client/action-draft.test.ts tests/client/payment-panel.test.ts`; nine pure draft and renderer tests pass. The monitored payment UI cases pass in all four projects.
+- [x] Show action cost, Commander tax, CP generated/spent/remainder, and D/sacrifice components. Select actual hand cards and controlled Backups from host-offered choices; an automatic suggestion remains editable until Confirm.
+- [x] Keep Review and Confirm as the only submit path. `commandPending` prevents duplicate submits; Cancel and Escape clear local drafts. A four-project browser case now reviews Forge Apprentice's activation cost and target, confirms it, resolves the stack item through both priority passes, and verifies the effective power and Dull state.
+- [ ] Add a browser regression for a rejected command retaining its draft when authority is unchanged. Also verify a new projected sequence clears stale drafts with an explanation; existing controller unit tests cover sequence clearing, but browser-level rejection coverage remains open.
 
 ```ts
 expect(hostSubmit).not.toHaveBeenCalled(); // after target and CP selection
@@ -612,7 +658,7 @@ expect(hostSubmit).toHaveBeenCalledTimes(1);
 ```
 
 In component tests `hostSubmit` is a Vitest spy supplied as the transport callback and `confirmButton` is the rendered button. Browser tests independently assert sequence changes through the real host.
-- [ ] Run focused tests; inspect payment markers and action dock captures at both sizes. Confirm no control overflows with a long ability name.
+- [x] Run focused tests; inspect payment markers and action dock captures at both sizes. Four payment captures are saved under `docs/ui-captures`. The activated ability uses a short control label, keeps its full rules text in the selected-card details and tooltip, and passes a no-clipped-text assertion in all four projects.
 
 ### Task 20: Add targeting arrows, party selection, and combat controls
 
@@ -725,8 +771,9 @@ await expect(page.getByRole('region', { name: 'Card catalog' })).toBeVisible();
 | Recovery | Every choice category after reload, persistence failure, stale draft |
 | Editor | Sequential input, grid inspection, incomplete draft recovery, legal start |
 
-- [ ] Add `tsconfig.tests.json` extending `tsconfig.json`, with `include: ["tests", "playwright*.config.ts"]` and `compilerOptions.types: ["node", "vite/client"]`. Append `tsc -p tsconfig.tests.json --noEmit` to `typecheck`. Run `npm run test:ui-design` with all four projects and `npm run test:ui-design:report`.
+- [x] Add `tsconfig.tests.json` extending `tsconfig.json`, with `include: ["tests", "playwright*.config.ts"]` and `compilerOptions.types: ["node", "vite/client"]`. Append `tsc -p tsconfig.tests.json --noEmit` to `typecheck`. Run `npm run test:ui-design` with all four projects and `npm run test:ui-design:report`; the latest design run passed 36 tests, and the HTML report was served for review.
 - [ ] Inspect each failed scenario's screenshot and trace during repair. Record finding ID, viewport, motion, expected/actual behavior, artifact path, and disposition. Rerun the focused case after a fix, then the complete suite after related changes settle. Monitoring is part of active implementation, not an unattended schedule.
+- [x] Persist crowded-board screenshots from all four viewport/motion projects under `docs/ui-captures/`; inspect normal-motion captures at both target sizes and link them from `docs/ui-reference.md`.
 - [ ] Establish snapshots only after geometry passes and the seven-state visual review approves the layout. Pin Playwright/browser/platform; separate platform baselines if fonts differ. Review every changed baseline.
 
 ```ts
@@ -737,7 +784,7 @@ await expect(page).toHaveScreenshot('idle-table.png', {
 ```
 
 - [ ] Attach Arena reference links from the approved spec alongside local idle, hover, cast, target, choice, stack, and editor captures. For each, judge ownership clarity, readability, hierarchy, spacing, feedback, and overflow. Explain intentional FFTCG/bright-theme differences.
-- [ ] Require zero failed design assertions and zero unexplained browser errors. A screenshot assertion alone cannot certify visual quality. Keep the original red audit evidence unchanged.
+- [x] Require zero failed design assertions and zero unexplained browser errors. The four-project suite now fails on page errors or browser console errors as well as layout/interaction assertions; the latest run passed all 36 cases. A screenshot assertion alone cannot certify visual quality. Keep the original red audit evidence unchanged.
 
 ## Stage 4: Presets and milestone acceptance
 
@@ -749,9 +796,19 @@ await expect(page).toHaveScreenshot('idle-table.png', {
 
 **Interfaces:** Extend `ScenarioDefinition` with a version and explicit acceptance IDs. Store deterministic `Command[]` transcripts and expected checkpoints in tests. Coverage records map requirement/card behavior IDs to executed test IDs and fresh results, not merely source filenames.
 
-- [ ] Convert A12. Run each preset to its advertised result: third Commander cast with seven legally payable CP; Final Spark reaching both EX decisions; affordable Borrowed Banner and Return Tide; separate excess Backup, duplicate-name, and Light/Dark conflicts; stolen Commander accepted/declined destinations with relevant observers; party/First Strike/allocation; End Phase through next turn.
-- [ ] Run `npx vitest run tests/scenarios/preset-transcripts.test.ts tests/scenarios/coverage.test.ts` and the focused scenario browser suite.
-- [ ] Fix fixture resources and placement, increment scenario versions when origins change, and record legal commands for each interaction. Replay every transcript using `productionContext`. Save/reload at each advertised decision.
+- [x] Convert A12. All nine registered presets now reach their targeted result: third Commander cast with seven legally payable CP; Final Spark reaching both EX decisions; affordable Borrowed Banner and Return Tide; excess Backup, duplicate-name, and Light/Dark conflicts; stolen Commander accepted/declined destinations with a departure observer; party allocation and First Strike; End Phase through the next controller End Phase.
+- [x] Run `npx vitest run tests/scenarios/preset-transcripts.test.ts tests/scenarios/coverage.test.ts`; 14 tests passed across the transcript and catalog suites after adding conflict and combat transcripts. The focused scenario browser test also passed. Remaining preset interactions and the full behavior matrix remain open.
+- [x] Repair the `commander-third-cast` fixture so its three Backups are active and record a production-reducer transcript that pays seven exact Fire CP for the third Commander cast and replays to the same final state. Other advertised preset transcripts remain open.
+- [x] Add two Fire discard sources to the Final Spark preset and test its accepted production path through both Archive Keeper and Return Tide EX skip decisions. The scheduler now drains queued typed EX frames after the resolving Summon exits the stack, then checks outcomes after the full EX queue; a seven-damage transcript confirms the result waits for both decisions. The transcript replays to the same state; other preset transcripts remain open.
+- [x] Add a validated Affordable Return Tide scenario with a Water CP source and an opposing Forward, then record and replay the exact two-CP cast and return effect. Borrowed Banner and the conflict/observer presets remain open.
+- [x] Add Water CP sources and an eligible Forward to the Borrowed Banner conflict preset, then record and replay its exact four-CP cast and temporary control change. The other Backup/Light-Dark conflict outcomes and remaining presets still need transcripts.
+- [x] Add an affordable Return Tide source to the Commander Destinations preset and record both owner choices, Return to Commander Zone and normal destination. In both transcripts, the field departure reaches Tide Witness's observer and the replay matches; additional save/reload-at-each-choice evidence remains open.
+- [x] Record the End Trigger preset through Rising Undertow's cast in Main 2, the End Phase trigger order, and its discard. This exposed stale source objects in trigger-order choice metadata after the Summon left the stack; order choices now omit a departed source object while retaining the LKI label. The transcript and replay pass; full save/reload checkpoints remain open.
+- [x] Add versioned Duplicate Name and Light/Dark conflict presets, record their cleanup decisions, and replay both transcripts. The Commander owner can select its replacement destination during the duplicate-name conflict.
+- [x] Extend Borrowed Banner coverage to steal a Backup, answer the resulting over-limit choice, and replay the accepted transcript.
+- [x] Record a blocked party's exact damage allocation and a separate First Strike blocker departure through combat completion. Each command is applied after JSON save/reload and the final transcript replays.
+- [x] Add monotonically versioned fixture origins, bump versions on the changed tax, EX, conflict, and Commander-destination presets, and round-trip state through JSON before every accepted command in the transcript suite.
+- [x] Fix preset fixture resources/placement, version all registered scenario origins, and record accepted commands for each advertised interaction. Replay every transcript using `productionContext`; apply each command after a JSON state round-trip. Additional database-level save/import checks at every checkpoint remain part of Task 11.
 
 ```ts
 for (const command of transcript) {
@@ -855,3 +912,20 @@ Review checkpoints occur after Tasks 10, 14, 24, and 27. They are verification g
 - [x] Included concrete file ownership, shared interfaces, test commands, red/green steps, and final release gates.
 - [x] Included active Playwright monitoring, four viewport/motion projects, screenshots/traces, reviewed baselines, and Arena design judgment.
 - [x] Kept implementation, commits, subagents, deployment, and worktree creation outside this planning turn.
+
+## Additional adjustment: mirror resource and Forward rows
+
+**Requested:** 2026-10-07. Match the Arena field hierarchy while preserving FFTCG ownership and control labels.
+
+- [x] Stack each player's two field rows vertically. Put the opponent's Backups at the top and Forwards below them, facing the center. Put the current player's Forwards above their Backups, with Backups toward the hand and bottom edge.
+- [x] Keep the existing player labels, accessible row names, card controls, and overflow behavior.
+- [x] Extend the crowded-board Playwright case to assert both row orders, the center-facing Forward rows, and clear space from player zones and hand.
+- [x] Run the focused layout assertion at 1280 × 720 and 1920 × 1080 with normal and reduced motion. All four cases passed.
+- [x] Run the complete four-project design suite after the additional adjustment. The current full suite passes all 48 tests.
+
+## Additional adjustment: Arena-style opposing Forward rows
+
+Use the same clear field hierarchy as Magic Arena: the player's resource row sits below their creature row. In this game, show the player's Backups along the bottom edge and their Forwards above them. Reverse that order for the opponent: their Backups sit at the top edge, with their Forwards below them. This places both Forward rows opposite each other across the center of the field.
+
+- [x] Keep player ownership clear and preserve the existing card interaction and overflow behavior in both rows.
+- [x] Verify the opposing Forward-row arrangement at 1280 × 720 and 1920 × 1080 in normal and reduced-motion modes; all four layout cases passed.

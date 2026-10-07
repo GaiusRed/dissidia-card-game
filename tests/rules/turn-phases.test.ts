@@ -1,18 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { cinderCompany, tidalAssembly } from '../../src/content/decks';
-import { answerChoice, createMatch } from '../../src/rules/setup';
+import { createMatch } from '../../src/rules/setup';
 import { mvpFormat } from '../../src/rules/format';
 import { context } from '../support/harness';
 import { advanceTurnStep } from '../../src/rules/turns';
+import { applyCommand } from '../../src/rules/engine';
+import type { MatchState, Seat } from '../../src/rules/types';
+
+function answer(state: MatchState, selected: string[], seat = state.choice!.seat): MatchState {
+  const result = applyCommand(state, { id: `setup-${state.seq}`, expectedSeq: state.seq, seat,
+    intent: { kind: 'answer', answer: { choice: state.choice!.id, selected, amounts: {} } } }, context);
+  if (!result.ok) throw new Error(result.error.message);
+  return result.state;
+}
 
 describe('Active and Draw Phases', () => {
   it('activates owned dull cards except Frozen cards, then draws only one on the first turn', () => {
-    const state = createMatch({ seed: 42, decks: [cinderCompany, tidalAssembly], format: mvpFormat }, context);
+    let state = createMatch({ seed: 42, decks: [cinderCompany, tidalAssembly], format: mvpFormat }, context);
     const chooser = state.choice!.seat;
     const first = chooser;
-    answerChoice(state, { choice: state.choice!.id, selected: ['first'], amounts: {} }, chooser, context);
-    for (const seat of [first, 1 - first] as const) {
-      answerChoice(state, { choice: state.choice!.id, selected: ['keep'], amounts: {} }, seat, context);
+    state = answer(state, ['first'], chooser);
+    const second: Seat = first === 0 ? 1 : 0;
+    for (const seat of [first, second] as const) {
+      state = answer(state, ['keep'], seat);
     }
     expect(state.phase).toBe('main1');
     expect(state.priority).toBe(first);

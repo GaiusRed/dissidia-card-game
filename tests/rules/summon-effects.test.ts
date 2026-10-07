@@ -24,7 +24,7 @@ describe('placeholder Summon effects', () => {
     const reply = cast(state, 0, source.object, [target.object], { discard: [], dullBackups: [backup.object], specialDiscard: null,
       dullSource: false, sacrificeSource: false, sourceElements: { [backup.object]: 'Fire' }, spend: { Fire: 1 } });
     if (!reply.ok) throw new Error(reply.error.message); state = reply.state;
-    for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
     expect(effectivePower(state, target.object, context)).toBe(7000);
     expect(hasKeyword(state, target.object, 'Brave', context)).toBe(true);
   });
@@ -41,7 +41,7 @@ describe('placeholder Summon effects', () => {
     const reply = cast(state, 1, source.object, [commander.object], { discard: [discard.object], dullBackups: [], specialDiscard: null,
       dullSource: false, sacrificeSource: false, sourceElements: { [discard.object]: 'Water' }, spend: { Water: 2 } });
     if (!reply.ok) throw new Error(reply.error.message); state = reply.state;
-    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
     expect(state.choice?.seat).toBe(0);
     expect(state.cards[commander.instance]!.zone).toBe('field');
     const choice = state.choice!;
@@ -65,7 +65,7 @@ describe('placeholder Summon effects', () => {
     const reply = cast(state, 0, source.object, [target.object], { discard: [discard.object], dullBackups: [backup.object], specialDiscard: null,
       dullSource: false, sacrificeSource: false, sourceElements: { [discard.object]: 'Fire', [backup.object]: 'Fire' }, spend: { Fire: 3 } }, 'backup');
     if (!reply.ok) throw new Error(reply.error.message); state = reply.state;
-    for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
     expect(state.cards[target.instance]!.zone).toBe('break');
   });
 
@@ -105,8 +105,10 @@ describe('placeholder Summon effects', () => {
     const reply = cast(state, 1, summon.object, [], { discard: [discard.object], dullBackups: [], specialDiscard: null,
       dullSource: false, sacrificeSource: false, sourceElements: { [discard.object]: 'Water' }, spend: { Water: 2 } });
     if (!reply.ok) throw new Error(reply.error.message); state = reply.state;
-    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
     expect(state.zones[1].hand).toHaveLength(2);
+    expect(state.execution.delayed).toHaveLength(1);
+    expect(state.execution.delayed[0]).toMatchObject({ controller: 1, createdTurn: state.turn, eligibleTurn: state.turn, at: 'controller-end' });
     for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
     expect(state.phase).toBe('end');
     expect(state.stack).toHaveLength(1);
@@ -133,7 +135,7 @@ describe('placeholder Summon effects', () => {
     const reply = cast(state, 0, summon.object, [guardian.object], { discard: [discard.object], dullBackups: [], specialDiscard: null,
       dullSource: false, sacrificeSource: false, sourceElements: { [discard.object]: 'Fire' }, spend: { Fire: 1 } });
     if (!reply.ok) throw new Error(reply.error.message); state = reply.state;
-    for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
     expect(state.cards[guardian.instance]!.damage).toBe(3000);
   });
 });

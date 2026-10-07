@@ -42,7 +42,7 @@ export function requestDeparture(state: MatchState, instance: InstanceId, destin
 
 export function resolveDeparture(state: MatchState, selected: string, context?: EngineContext): DepartureReceipt | null {
   const pending = state.choice;
-  if (!pending || pending.resume.handler !== 'departure' || pending.resume.step !== 'commander-return') return null;
+  if (!pending || !('handler' in pending.resume) || pending.resume.handler !== 'departure' || pending.resume.step !== 'commander-return') return null;
   if (!pending.options.some(option => option.id === selected)) return null;
   const data = pending.resume.data as { instance: InstanceId; destination: Zone };
   const card = state.cards[data.instance];

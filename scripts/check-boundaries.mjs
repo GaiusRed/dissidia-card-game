@@ -10,7 +10,8 @@ const forbiddenGlobals = new Set([
 ]);
 
 function sourceFiles(directory) {
-  if (!statSync(directory).isDirectory()) return [];
+  try { if (!statSync(directory).isDirectory()) return []; }
+  catch { return []; }
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const full = path.join(directory, entry.name);
     return entry.isDirectory() ? sourceFiles(full) : /\.(?:ts|tsx|mts|cts)$/.test(entry.name) ? [full] : [];
@@ -40,6 +41,12 @@ function resolveLocal(file, specifier) {
 export function findBoundaryViolations(projectRoot = process.cwd()) {
   const root = path.resolve(projectRoot);
   const entryDirectory = path.join(root, 'src/rules');
+  const cardDirectory = path.join(root, 'src/content/cards/opus-ph');
+  const cardIdentity = new Set();
+  for (const file of sourceFiles(cardDirectory)) {
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(/"(?:number|name)"\s*:\s*"([^"]+)"/g)) cardIdentity.add(match[1]);
+  }
   const queue = sourceFiles(entryDirectory);
   const visited = new Set();
   const issues = new Set();
@@ -82,6 +89,9 @@ export function findBoundaryViolations(projectRoot = process.cwd()) {
           issues.add(`${path.relative(root, file)}: forbidden nondeterministic call '${owner.text}.${method}'`);
         }
       }
+      if (ts.isStringLiteral(node) && (cardIdentity.has(node.text) || /^P-\d{3}[CRHL]$/.test(node.text))) {
+        issues.add(`${path.relative(root, file)}: card identity '${node.text}' must resolve through the registry`);
+      }
       if (ts.isIdentifier(node) && forbiddenGlobals.has(node.text)) {
         const parent = node.parent;
         const isKey = (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
@@ -92,6 +102,31 @@ export function findBoundaryViolations(projectRoot = process.cwd()) {
       ts.forEachChild(node, visit);
     }
     visit(tree);
+  }
+
+  const presentationFiles = [path.join(root, 'src/main.ts'), ...sourceFiles(path.join(root, 'src/client'))];
+  for (const presentationFile of presentationFiles) {
+    try {
+      const source = readFileSync(presentationFile, 'utf8');
+      const tree = ts.createSourceFile(presentationFile, source, ts.ScriptTarget.Latest, true);
+      const relative = path.relative(root, presentationFile).replaceAll('\\', '/');
+      function checkPresentation(node) {
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+            ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'host' &&
+            node.expression.name.text === 'getState') {
+          issues.add(`${relative}: presentation must read host projections, not authoritative state`);
+        }
+        if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+            node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) &&
+            /(?:^|\/)content\/(?:handlers|shared\/legacy|cards\/opus-ph)(?:\/|$)/.test(node.moduleSpecifier.text)) {
+          issues.add(`${relative}: presentation must not import runtime card handlers`);
+        }
+        ts.forEachChild(node, checkPresentation);
+      }
+      checkPresentation(tree);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
   }
 
   return [...issues].sort();

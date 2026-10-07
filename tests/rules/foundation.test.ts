@@ -36,10 +36,11 @@ describe('rules foundation transcript', () => {
         const common = character.elements.find(element => cpCard.elements.includes(element) &&
           (element === 'Fire' || element === 'Water'));
         if (!common || character.cost > 2) return [];
-        return [{ seat, character: character.number, cpCard: cpCard.number, element: common, cost: character.cost }];
+        return [{ seat, character: character.number, cpCard: cpCard.number, element: common as 'Fire' | 'Water', cost: character.cost }];
       }))[0];
     }
     expect(candidate).toBeDefined();
+    if (!candidate) throw new Error('A legal opening cast was not found.');
     const transcript: Command[] = [];
     // Rebuild the selected seed and record each accepted setup answer.
     state = createMatch(options, context);

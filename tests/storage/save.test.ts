@@ -10,6 +10,7 @@ describe('match saves', () => {
   it('round trips complete state including an open choice and command history', async () => {
     const state = fixture({}).state;
     const save = createSave(state, []);
+    expect(save.state.execution).toEqual(JSON.parse(JSON.stringify(state.execution)));
     await saveRecord(save);
     const restored = await loadRecord();
     expect(restored).toEqual(save);

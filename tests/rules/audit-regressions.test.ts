@@ -77,7 +77,7 @@ describe('audit rule regressions', () => {
     expect(offer.targetOptions.map(option => option.id)).toContain(d.object(1, 'P-023C'));
   });
 
-  it('F08: a controlled Backup can pay CP while the opponent owns it', () => {
+  it('F08: an opponent-controlled Backup cannot pay CP', () => {
     const d = driver({ placements: [
       { seat: 0, card: 'P-005R', zone: 'hand' },
       { seat: 0, card: 'P-009C', zone: 'field' },
@@ -85,11 +85,12 @@ describe('audit rule regressions', () => {
     const source = d.object(0, 'P-005R');
     const backup = d.object(0, 'P-009C');
     const card = Object.values(d.state.cards).find(item => item.object === backup)!;
-    card.owner = 1;
+    card.controller = 1;
     expect(validatePayment(d.state, 0, source, {
       discard: [], dullBackups: [backup], specialDiscard: null, dullSource: false, sacrificeSource: false,
       sourceElements: { [backup]: 'Fire' }, spend: { Fire: 1 },
-    }, 1, context)).toEqual([]);
+    }, { amount: 1, elements: ['Fire'], dullSource: false, sacrificeSource: false, specialDiscardName: null }, context)
+      .map(error => error.code)).toContain('INVALID_CP_SOURCE');
   });
 
   it('F05: a Forward with zero effective power leaves at the next rule checkpoint', () => {
@@ -106,10 +107,23 @@ describe('audit rule regressions', () => {
     const commander = d.state.cards[d.state.commanders[0].instance]!;
     moveCard(d.state, commander.instance, 'field');
     d.send({ kind: 'pass' }, 0);
-    expect(d.state.choice?.resume.handler).toBe('departure');
+    expect(d.state.choice?.resume).toMatchObject({ script: 'rules', ability: 'batch', step: 'commander-departure' });
     expect(d.answer(['destination']).ok).toBe(true);
     expect(d.state.cards[commander.instance]!.zone).toBe('break');
     expect(d.state.cards[Object.values(d.state.cards).find(item => item.owner === 0 && item.card === 'P-002C')!.instance]!.zone).toBe('break');
+  });
+
+  it('A03: returning the first Commander replacement does not release the frozen duplicate', () => {
+    const d = driver({ placements: [{ seat: 0, card: 'P-002C', zone: 'field' }] });
+    const commander = d.state.cards[d.state.commanders[0].instance]!;
+    const variant = Object.values(d.state.cards).find(item => item.owner === 0 && item.card === 'P-002C')!;
+    moveCard(d.state, commander.instance, 'field');
+    d.state.field = [commander.instance, variant.instance];
+    expect(d.send({ kind: 'pass' }, 0).ok).toBe(true);
+    expect(d.state.choice?.seat).toBe(0);
+    expect(d.answer(['return']).ok).toBe(true);
+    expect(d.state.cards[commander.instance]!.zone).toBe('commander');
+    expect(d.state.cards[variant.instance]!.zone).toBe('break');
   });
 
   it('F05: controlling Light and Dark Characters breaks both at a rule checkpoint', () => {
@@ -169,6 +183,7 @@ describe('audit rule regressions', () => {
     d.send({ kind: 'pass' }, 0); d.send({ kind: 'pass' }, 1);
     expect(d.state.choice?.kind).toBe('allocation');
     expect(d.state.choice?.allocation).toEqual({ total: 3000, increment: 1000 });
+    expect((JSON.parse(JSON.stringify(d.state)) as typeof d.state).execution).toEqual(d.state.execution);
     expect(d.answer([], { [first]: 1000, [second]: 2000 }).ok).toBe(true);
     expect(Object.values(d.state.cards).find(card => card.object === first)!.damage).toBe(1000);
     expect(Object.values(d.state.cards).find(card => card.object === second)!.damage).toBe(2000);

@@ -45,10 +45,10 @@ for (const [file, source] of cardSources) {
   if (exHandler && !hasScriptReference(exHandler)) {
     errors.push(`Card module ${file} does not register its EX Burst script ${exHandler}.`);
   }
-  if (source.includes('"kind": "field"') && !source.includes('modifyPower')) {
+  if (source.includes('"kind": "field"') && !/fieldEffects:\s*\[\s*\{[\s\S]*?effects:/.test(source)) {
     errors.push(`Card module ${file} has a field ability without a power provider.`);
   }
-  if (source.includes('"kind": "replacement"') && !source.includes('replaceDamage')) {
+  if (source.includes('"kind": "replacement"') && !/replacements:\s*\[\s*\{[\s\S]*?propose:/.test(source)) {
     errors.push(`Card module ${file} has a replacement ability without a damage provider.`);
   }
 }

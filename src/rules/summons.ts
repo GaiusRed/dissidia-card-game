@@ -6,10 +6,17 @@ function event(state: MatchState, type: string, data: RuleEvent['data']): RuleEv
 }
 
 function runCardScript(state: MatchState, item: StackItem, context: EngineContext, step: string, data: import('./types').Json) {
-  const script = context.handlers[item.handler];
+  const script = context.handlers?.[item.handler];
   if (!script) throw new Error(`No card script registered for ${item.lastKnown.card}/${item.handler}.`);
-  return script({ state, catalog: context.catalog, handlers: context.handlers, cardEffects: context.cardEffects,
+  return script({ state, catalog: context.catalog, handlers: context.handlers!, registry: context.registry,
     frame: { handler: item.handler, step, data } });
+}
+
+function cleanupResolvedSummon(state: MatchState, instance: string, events: RuleEvent[]): void {
+  const summon = state.cards[instance];
+  if (summon?.zone !== 'stack') return;
+  const old = moveCard(state, summon.instance, 'break');
+  events.push(event(state, 'summon.resolved', { card: old.card, source: old.object }));
 }
 
 /** Resolve a Summon through its owning card module, then apply generic stack cleanup. */
@@ -21,11 +28,7 @@ export function resolveSummon(state: MatchState, item: StackItem, context: Engin
   const events = [...result.events];
   state.work.push(...result.next);
   if (result.choice) state.choice = result.choice;
-  const summon = state.cards[item.lastKnown.instance];
-  if (summon?.zone === 'stack') {
-    const old = moveCard(state, summon.instance, 'break');
-    events.push(event(state, 'summon.resolved', { card: old.card, source: old.object }));
-  }
+  if (!result.choice && result.next.length === 0) cleanupResolvedSummon(state, item.lastKnown.instance, events);
   return events;
 }
 
@@ -56,5 +59,10 @@ export function resumePendingSummonResolution(state: MatchState, context: Engine
     state.priority = state.active;
   }
   state.work.push(...result.next);
+  if (!result.choice && result.next.length === 0 &&
+      !state.work.some(item => item.handler === 'summon-resolution' && item.step === 'resume-handler')) {
+    const instance = typeof raw.instance === 'string' ? raw.instance : '';
+    cleanupResolvedSummon(state, instance, result.events);
+  }
   return result.events;
 }

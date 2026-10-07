@@ -1,4 +1,5 @@
 import type { CardDefinition } from '../../../rules/types';
+import { vanillaScript } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-026R",
@@ -28,4 +29,5 @@ export const card: CardDefinition = {
   "ex": false,
   "text": "First Strike."
 };
+export const script = vanillaScript(card);
 export default card;

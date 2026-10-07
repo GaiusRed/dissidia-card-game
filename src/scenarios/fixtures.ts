@@ -60,6 +60,8 @@ export function buildFixture(input: Fixture, context: EngineContext): MatchState
   state.priority = input.priority ?? state.active;
   state.passes = 0;
   state.choice = null;
+  state.execution.frames = [];
+  state.execution.returnWindow = { kind: 'priority', seat: state.priority };
   state.result = null;
   assertInvariants(state, context);
   return state;

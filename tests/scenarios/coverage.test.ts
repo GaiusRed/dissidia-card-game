@@ -8,11 +8,13 @@ describe('focused scenario catalog', () => {
   it('loads every validated scenario as a serializable new match origin', () => {
     expect(scenarioCatalog.map(scenario => scenario.id)).toEqual([
       'commander-third-cast', 'multi-ex', 'control-conflict', 'end-trigger-order', 'party-first-strike', 'commander-destinations',
+      'return-tide-affordable', 'duplicate-name-conflict', 'light-dark-conflict',
     ]);
     for (const scenario of scenarioCatalog) {
       const state = loadScenario(scenario.id, context);
       expect(() => assertInvariants(state, context)).not.toThrow();
       expect(JSON.parse(JSON.stringify(state))).toEqual(state);
+      expect(scenario.version).toBeGreaterThan(0);
       expect(scenario.title).not.toBe('');
       expect(scenario.expected.length).toBeGreaterThan(0);
     }

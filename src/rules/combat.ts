@@ -10,7 +10,7 @@ function event(state: MatchState, type: string, data: RuleEvent['data']): RuleEv
 function object(state: MatchState, id: ObjectId) { return Object.values(state.cards).find(card => card.object === id); }
 
 export function declareAttack(state: MatchState, seat: Seat, members: ObjectId[], context: EngineContext): RuleError[] {
-  if (state.phase !== 'attack' || state.active !== seat || state.priority !== seat || state.combat) return [err('WRONG_TIMING', 'Declare an attack during your Attack Phase with priority.')];
+  if (state.phase !== 'attack' || state.active !== seat || state.priority !== seat || state.combat || state.stack.length > 0) return [err('WRONG_TIMING', 'Declare an attack during your Attack Phase with priority and an empty stack.')];
   if (members.length === 0) return [err('INVALID_ATTACKER', 'Choose at least one Forward to attack.')];
   if (new Set(members).size !== members.length) return [err('DUPLICATE_ATTACKER', 'A Forward cannot appear twice in one party.')];
   const attackers = members.map(member => object(state, member));
@@ -30,7 +30,9 @@ export function declareAttack(state: MatchState, seat: Seat, members: ObjectId[]
     if (!hasKeyword(state, attacker.object, 'Brave', context)) attacker.dull = true;
     attacker.attackedTurn = state.turn;
   }
-  state.combat = { step: 'prepare', attackers: validAttackers.map(attacker => attacker.object), blocker: null, wasBlocked: false, allocation: {} };
+  state.combat = { step: 'prepare', participants: validAttackers.map(attacker => ({ ...attacker })),
+    attackers: validAttackers.map(attacker => attacker.object), blocker: null,
+    wasBlocked: false, partyFirstStrike: validAttackers.every(attacker => hasKeyword(state, attacker.object, 'First Strike', context)), allocation: {} };
   state.passes = 0;
   state.priority = seat;
   return [];
@@ -48,6 +50,7 @@ export function declareBlock(state: MatchState, seat: Seat, blockerId: ObjectId 
   const blocker = object(state, blockerId);
   if (!blocker || blocker.zone !== 'field' || blocker.controller !== seat || blocker.dull || context.catalog[blocker.card]?.type !== 'Forward') return [err('INVALID_BLOCKER', 'Choose an active Forward you control.')];
   state.combat.blocker = blocker.object;
+  state.combat.participants.push({ ...blocker });
   state.combat.wasBlocked = true;
   state.combat.step = 'damage';
   state.passes = 0;
@@ -59,8 +62,10 @@ export function resolveCombat(state: MatchState, context: EngineContext): RuleEv
   const combat = state.combat;
   if (!combat) return [];
   const events: RuleEvent[] = [];
-  const attackers = combat.attackers.map(id => object(state, id)).filter((card): card is NonNullable<typeof card> => !!card && card.zone === 'field');
-  const blocker = combat.blocker ? object(state, combat.blocker) : undefined;
+  const attackers = combat.attackers.map(id => object(state, id)).filter((card): card is NonNullable<typeof card> =>
+    !!card && card.zone === 'field' && card.controller === state.active);
+  const blockerCard = combat.blocker ? object(state, combat.blocker) : undefined;
+  const blocker = blockerCard?.zone === 'field' && blockerCard.controller !== state.active ? blockerCard : undefined;
   if (attackers.length === 0) { state.combat = null; return events; }
   if (attackers.length > 1 && blocker?.zone === 'field' && Object.keys(combat.allocation).length === 0 && combat.step !== 'normalDamage') {
     const total = effectivePower(state, blocker.object, context);
@@ -76,6 +81,8 @@ export function resolveCombat(state: MatchState, context: EngineContext): RuleEv
     return events;
   }
   const power = (card: (typeof attackers)[number]) => effectivePower(state, card.object, context);
+  const partyFirstStrike = attackers.length > 1 && combat.partyFirstStrike;
+  const blockerFirstStrike = blocker?.zone === 'field' && hasKeyword(state, blocker.object, 'First Strike', context);
   const damage = (target: (typeof attackers)[number], amount: number) => {
     const applied = replacementDamage(state, target.object, amount, context);
     target.damage += applied;
@@ -102,6 +109,25 @@ export function resolveCombat(state: MatchState, context: EngineContext): RuleEv
       return events;
     }
   }
+  if (combat.step === 'damage' && attackers.length > 1 && blocker?.zone === 'field' && (partyFirstStrike || blockerFirstStrike)) {
+    if (partyFirstStrike) damage(blocker, attackers.reduce((sum, attacker) => sum + power(attacker), 0));
+    if (blockerFirstStrike) {
+      for (const [id, amount] of Object.entries(combat.allocation)) {
+        const target = attackers.find(attacker => attacker.object === id);
+        if (target) damage(target, amount);
+      }
+    }
+    if (partyFirstStrike !== blockerFirstStrike) {
+      combat.step = 'normalDamage';
+      state.passes = 0;
+      state.priority = state.active;
+      events.push(event(state, 'combat.first-strike-checkpoint', { attackers: combat.attackers, blocker: blocker.object }));
+      return events;
+    }
+    state.combat = null;
+    state.priority = state.active;
+    return events;
+  }
   if ((!blocker || blocker.zone !== 'field') && !combat.wasBlocked) {
     const defender: Seat = other(state.active);
     events.push(...dealPlayerDamage(state, defender, 1, attackers[0]!.card, context));
@@ -109,10 +135,12 @@ export function resolveCombat(state: MatchState, context: EngineContext): RuleEv
     const attackPower = attackers.reduce((sum, attacker) => sum + power(attacker), 0);
     const allocationEntries = Object.entries(combat.allocation).filter(([id, amount]) => attackers.some(attacker => attacker.object === id) && amount > 0);
     if (attackers.length > 1) {
-      damage(blocker, attackPower);
-      for (const [id, amount] of allocationEntries) {
-        const target = attackers.find(attacker => attacker.object === id)!;
-        damage(target, amount);
+      if (combat.step !== 'normalDamage' || !partyFirstStrike) damage(blocker, attackPower);
+      if (combat.step !== 'normalDamage' || !blockerFirstStrike) {
+        for (const [id, amount] of allocationEntries) {
+          const target = attackers.find(attacker => attacker.object === id)!;
+          damage(target, amount);
+        }
       }
     } else if (combat.step === 'normalDamage') {
       const attacker = attackers[0]!;

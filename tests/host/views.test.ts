@@ -1,14 +1,55 @@
 import { describe, expect, it } from 'vitest';
 import { cinderCompany, tidalAssembly } from '../../src/content/decks';
 import { LocalHost } from '../../src/host/local-host';
+import type { Command } from '../../src/rules/types';
 import { projectView } from '../../src/host/views';
-import { fixture } from '../support/harness';
+import { addKeyword, addPower, changeControl } from '../../src/rules/continuous';
+import { moveCard } from '../../src/rules/zones';
+import { context, fixture } from '../support/harness';
 import { loadRecord } from '../../src/storage/indexed-db';
 import type { RuleEvent } from '../../src/rules/types';
 import 'fake-indexeddb/auto';
 
 describe('local host projections', () => {
-  it('starts the exact two-seat placeholder decks and preserves opponent hidden information', () => {
+  it('projects effective field power for presentation instead of requiring client rule evaluation', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-010C', zone: 'field' }, { seat: 0, card: 'P-005R', zone: 'field' },
+    ] });
+    const source = h.object(0, 'P-010C');
+    const target = h.object(0, 'P-005R');
+    addPower(h.state, source, target, 1000, h.state.turn);
+
+    const view = projectView(h.state, 0, [], context);
+
+    expect(view.presentations[target]).toMatchObject({ object: target, power: 5000 });
+  });
+
+  it('projects stolen-card ownership, effective characteristics, and a departed stack source', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-005R', zone: 'field' },
+      { seat: 0, card: 'P-014R', zone: 'field' },
+    ] });
+    const target = h.object(0, 'P-005R');
+    const source = h.object(0, 'P-014R');
+    const sourceCard = Object.values(h.state.cards).find(card => card.object === source)!;
+    changeControl(h.state, source, target, 1, null);
+    addPower(h.state, source, target, 1000, h.state.turn);
+    addKeyword(h.state, source, target, 'Haste', h.state.turn);
+    const departed = moveCard(h.state, sourceCard.instance, 'break');
+    h.state.stack.push({ id: 'departed-trigger', controller: 0, source, lastKnown: departed,
+      handler: 'typed-trigger', targets: [target], mode: null, data: null,
+      resume: { script: 'P-014R', version: '1', ability: 'cinder-witness-break', step: 'resolve', payload: null } });
+
+    const view = projectView(h.state, 1, [], context);
+
+    expect(view.presentations[target]).toMatchObject({ owner: 0, controller: 1, power: 5000, keywords: ['Haste'] });
+    expect(view.stack[0]).toMatchObject({ source, lastKnown: { object: source, owner: 0, zone: 'field' }, targets: [target] });
+    expect(view.cards[sourceCard.instance]).toMatchObject({ object: sourceCard.object, owner: 0, zone: 'break' });
+    expect(view.field).not.toContain(sourceCard.instance);
+    expect(view.presentations).not.toHaveProperty(source);
+  });
+
+  it('starts the exact two-seat placeholder decks and preserves opponent hidden information', async () => {
     const host = new LocalHost();
     host.start(42, [cinderCompany, tidalAssembly]);
     const state = host.getState();
@@ -19,6 +60,15 @@ describe('local host projections', () => {
     expect(projection.zones[0].deck).toEqual([]);
     expect(projection.deckCounts[0]).toBe(state.zones[0].deck.length);
     expect(state.cards[state.zones[1].deck[0]!]!.card).not.toBe('HIDDEN');
+    const choice = state.choice!;
+    const reply = await host.submit({ id: 'default-view-opener', expectedSeq: state.seq, seat: choice.seat,
+      intent: { kind: 'answer', answer: { choice: choice.id, selected: ['first'], amounts: {} } } });
+    expect(reply.ok).toBe(true);
+    const current = host.getState();
+    const actor = current.choice!.seat;
+    const opponentHand = current.zones[actor === 0 ? 1 : 0].hand;
+    const opponentIdentity = current.cards[opponentHand[0]!]!.card;
+    expect(JSON.stringify(host.view())).not.toContain(opponentIdentity);
   });
 
   it('withholds hidden card identities, deck order, private choices, and private log details', () => {
@@ -41,7 +91,18 @@ describe('local host projections', () => {
     expect(view.choice?.options).toEqual([]);
     expect(view.log.map(entry => entry.id)).toEqual(['draw-own']);
     expect(view.deckCounts[1]).toBe(opponentDeckOrder.length);
-    expect(JSON.stringify(projectView(h.state, null))).not.toContain(opponentDeckOrder[0]!);
+    const publicView = projectView(h.state, null, log, context);
+    const publicText = JSON.stringify(publicView);
+    expect(publicText).not.toContain(opponentDeckOrder[0]!);
+    expect(publicText).not.toContain('P-031R');
+    expect(publicText).not.toContain(secret.object);
+    expect(publicView.zones[0].hand.every(instance => instance.startsWith('hidden-hand-0-'))).toBe(true);
+    expect(publicView.zones[1].hand.every(instance => instance.startsWith('hidden-hand-1-'))).toBe(true);
+    expect(publicView.choice?.options).toEqual([]);
+    expect(publicView.cardTray).toEqual({ hand: [], otherZones: [] });
+    expect(publicView.castAccess).toEqual([]);
+    expect(publicView.actions).toEqual([]);
+    expect(publicView.log).toEqual([]);
   });
 
   it('accepts only current-sequence commands and publishes accepted state changes after persistence', async () => {
@@ -73,12 +134,54 @@ describe('local host projections', () => {
       } });
     }
     const current = host.getState();
-    const access = host.view(current.priority).castAccess;
+    const actor = current.priority;
+    if (actor === null) throw new Error('Expected a priority actor.');
+    const access = host.view(actor).castAccess;
     expect(access.every(item => item.source && item.blockedReasons)).toBe(true);
-    expect(host.view(current.priority).actions.some(action => action.kind === 'pass')).toBe(true);
-    const foreign = host.view(current.priority === 0 ? 1 : 0);
+    expect(host.view(actor).actions.some(action => action.kind === 'pass')).toBe(true);
+    const foreign = host.view(actor === 0 ? 1 : 0);
     expect(foreign.actions).toEqual([]);
-    expect(JSON.stringify(foreign)).not.toContain(current.zones[current.priority].deck[0]!);
+    expect(JSON.stringify(foreign)).not.toContain(current.zones[actor].deck[0]!);
+  });
+  it('projects printed and effective hand and Commander card data', async () => {
+    const host = new LocalHost();
+    host.start(4312);
+    const initial = host.getState();
+    const opening = initial.choice!;
+    await host.submit({ id: 'projection-starting-player', expectedSeq: initial.seq, seat: opening.seat,
+      intent: { kind: 'answer', answer: { choice: opening.id, selected: ['first'], amounts: {} } } });
+    const view = host.view();
+    const hand = view.cardTray.hand[0]!.card as unknown as Record<string, unknown>;
+    const commander = view.cardTray.otherZones[0]!.card as unknown as Record<string, unknown>;
+    expect(hand).toMatchObject({ zone: 'hand', frozen: false, commander: false, commanderTax: 0 });
+    expect(hand.printed).toMatchObject({ number: hand.card, name: expect.any(String), type: expect.any(String) });
+    expect(hand).toHaveProperty('power');
+    expect(hand).toHaveProperty('keywords');
+    expect(commander).toMatchObject({ zone: 'commander', commander: true, commanderTax: 0 });
+    expect(commander.printed).toMatchObject({ number: commander.card, rarity: 'L' });
+  });
+  it('allows inspecting the other hand during setup without changing the decision actor', async () => {
+    const host = new LocalHost();
+    host.start(4321);
+    const initial = host.getState();
+    const opening = initial.choice!;
+    expect((await host.submit({ generation: host.view().generation, command: {
+      id: 'inspect-setup-start', expectedSeq: initial.seq, seat: opening.seat,
+      intent: { kind: 'answer', answer: { choice: opening.id, selected: ['first'], amounts: {} } },
+    } })).ok).toBe(true);
+    const state = host.getState();
+    const choice = state.choice!;
+    expect(choice.kind).toBe('mulligan');
+    const inspected = host.view(choice.seat === 0 ? 1 : 0);
+    expect(inspected.decisionSeat).toBe(choice.seat);
+    expect(inspected.choice?.options).toEqual([]);
+    expect(inspected.cardTray.hand.length).toBeGreaterThan(0);
+    const reply = await host.submit({ generation: inspected.generation, command: {
+      id: 'inspect-then-answer', expectedSeq: state.seq, seat: choice.seat,
+      intent: { kind: 'answer', answer: { choice: choice.id, selected: ['keep'], amounts: {} } },
+    } });
+    expect(reply.ok).toBe(true);
+    expect(host.getState().seq).toBe(state.seq + 1);
   });
   it('deduplicates identical command IDs and rejects conflicting reuse without changing state', async () => {
     const host = new LocalHost();
@@ -104,10 +207,17 @@ describe('local host projections', () => {
     host.start(9);
     const initial = host.getState();
     const choice = initial.choice!;
-    const command = { id: 'setup', expectedSeq: 0, seat: choice.seat, intent: {
+    const command: Command = { id: 'setup', expectedSeq: 0, seat: choice.seat, intent: {
       kind: 'answer', answer: { choice: choice.id, selected: ['first'], amounts: {} },
-    } } as const;
+    } };
     const accepted = await host.submit(command);
+    const afterFirst = host.getState();
+    const mulligan = afterFirst.choice!;
+    const secondCommand: Command = { id: 'keep-opening-hand', expectedSeq: afterFirst.seq, seat: mulligan.seat, intent: {
+      kind: 'answer', answer: { choice: mulligan.id, selected: ['keep'], amounts: {} },
+    } };
+    expect((await host.submit(secondCommand)).ok).toBe(true);
+    expect(await host.submit(command)).toEqual(accepted);
     await host.waitForSave();
     const exported = await host.exportSave();
     const restored = new LocalHost();

@@ -1,6 +1,7 @@
 import type { AbilityHandler, CardDefinition } from '../../../rules/types';
 import { damageForward } from '../../shared/card-helpers';
 import { payload } from '../../shared/legacy';
+import { singleActivationScript } from '../../shared/script-helpers';
 
 const cinderMarshalSpecial: AbilityHandler = context => ({
   events: damageForward(context, payload(context.frame.data).targets?.[0] ?? '', 7000),
@@ -44,6 +45,9 @@ export const card: CardDefinition = {
   ],
   "summonHandler": null,
   "ex": false,
-  "text": "No abilities."
+  "text": "Brave. Flare Order — {S}, {Fire}, {D}: Choose 1 Forward. Deal it 7000 damage."
 };
+export const script = singleActivationScript(card, ({ frame }) => [{ simultaneous: false, operations: [
+  { kind: 'forward-damage', source: frame.source, target: frame.targets[0]!, amount: 7000 },
+] }]);
 export default card;

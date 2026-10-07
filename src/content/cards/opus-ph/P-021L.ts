@@ -2,6 +2,9 @@ import { requestDeparture } from '../../../rules/commander';
 import type { AbilityHandler, CardDefinition } from '../../../rules/types';
 import { chooseForward } from '../../shared/card-helpers';
 import { emit, payload } from '../../shared/legacy';
+import type { CardScript } from '../../../rules/contracts/card-script';
+import { z } from 'zod';
+import { selfEntryTrigger } from '../../shared/script-helpers';
 
 const tideWardenSpecial: AbilityHandler = context => {
   const target = Object.values(context.state.cards).find(card => card.object === (payload(context.frame.data).targets?.[0] ?? ''));
@@ -43,13 +46,14 @@ export const card: CardDefinition = {
       "handler": "tide-warden-activate",
       "text": "When Tide Warden enters the field, choose 1 Forward. Activate it.",
       "ex": false,
-      "trigger": "enter"
+      "trigger": "enter",
+      "target": { "zones": ["field"], "types": ["Forward"], "elements": [], "owner": "any", "controller": "any", "dull": null }
     },
     {
       "id": "undertow",
       "kind": "special",
       "handler": "tide-warden-special",
-      "text": "{S}, {Water}, {D}: Choose 1 Forward. Return it to its owner’s hand.",
+      "text": "{S}, {Water}, {D}: Choose 1 Forward. Return it to its owner's hand.",
       "ex": false,
       "activation": { "cost": 1, "elements": ["Water"], "dullSource": true, "sacrificeSource": false, "specialDiscardName": "Tide Warden",
         "target": { "zones": ["field"], "types": ["Forward"], "elements": [], "owner": "any", "controller": "any", "dull": null } }
@@ -57,6 +61,26 @@ export const card: CardDefinition = {
   ],
   "summonHandler": null,
   "ex": false,
-  "text": "No abilities."
+  "text": "When Tide Warden enters the field, choose 1 Forward. Activate it. Undertow — {S}, {Water}, {D}: Choose 1 Forward. Return it to its owner's hand."
 };
+export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [
+  {
+    id: 'tide-warden-enter', kind: 'auto', text: card.abilities[0]!.text, ex: false, zones: ['field'],
+    cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
+    modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
+    triggers: [selfEntryTrigger], fieldEffects: [], replacements: [],
+    steps: { resolve: { payloadSchema: z.null(), run: ({ frame }) => ({ batches: [{ simultaneous: false, operations: [
+      { kind: 'status', object: frame.targets[0]!, dull: false, freeze: false },
+    ] }], choice: null, next: null }) } },
+  },
+  {
+    id: 'undertow', kind: 'special', text: card.abilities[1]!.text, ex: false, zones: ['field'],
+    cost: { cp: 1, elements: ['Water'], dullSource: true, sacrificeSource: false, sameNameDiscard: true },
+    modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
+    triggers: [], fieldEffects: [], replacements: [],
+    steps: { resolve: { payloadSchema: z.null(), run: ({ frame }) => ({ batches: [{ simultaneous: false, operations: [
+      { kind: 'move', object: frame.targets[0]!, to: 'hand', index: null },
+    ] }], choice: null, next: null }) } },
+  },
+] };
 export default card;

@@ -4,7 +4,7 @@ function effectData(data: unknown): Record<string, unknown> {
   return data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
 }
 export function effectivePower(state: MatchState, object: ObjectId,
-  context: { catalog: Catalog; cardEffects?: EngineContext['cardEffects'] }): number {
+  context: Pick<EngineContext, 'catalog' | 'registry'>): number {
   const card = Object.values(state.cards).find(item => item.object === object);
   if (!card) return 0;
   const definition = context.catalog[card.card];
@@ -25,8 +25,12 @@ export function effectivePower(state: MatchState, object: ObjectId,
   for (const instance of state.field) {
     const support = state.cards[instance]!;
     if (support.controller === card.controller) {
-      const provider = context.cardEffects?.[support.card]?.modifyPower;
-      if (provider) power += provider(state, card, support, context as EngineContext);
+      const script = context.registry?.manifest.cards.some(item => item.number === support.card)
+        ? context.registry.card(support.card) : undefined;
+      const typedPower = script?.abilities.flatMap(ability => ability.fieldEffects.flatMap(provider =>
+        provider.effects(state, support, context.catalog))).filter((operation): operation is Extract<import('./contracts/execution').Operation, { kind: 'power' }> =>
+          operation.kind === 'power' && operation.object === object && operation.mode === 'add');
+      if (typedPower?.length) power += typedPower.reduce((sum, operation) => sum + operation.value, 0);
     }
   }
   return Math.max(0, power);
@@ -54,21 +58,32 @@ export function addPower(state: MatchState, source: ObjectId, object: ObjectId, 
 export function setPower(state: MatchState, source: ObjectId, object: ObjectId, value: number, expiresTurn: number): void {
   addEffect(state, 'power-set', source, object, { value }, expiresTurn);
 }
-export function expireTurnEffects(state: MatchState): void {
-  const expiring = state.effects.filter(effect => effect.expiresTurn !== null && effect.expiresTurn <= state.turn);
-  for (const effect of expiring) {
-    if (effect.handler === 'borrowed-control') {
-      const targetObject = effectData(effect.data).object;
-      const target = typeof targetObject === 'string' ? Object.values(state.cards).find(card => card.object === targetObject) : undefined;
-      if (target?.zone === 'field') target.controller = target.owner;
+export function recomputeControl(state: MatchState, context: Pick<EngineContext, 'catalog'>): void {
+  for (const instance of state.field) {
+    const target = state.cards[instance];
+    if (!target || !context.catalog[target.card]) continue;
+    const activeControl = state.effects.filter(effect => effect.handler === 'borrowed-control' &&
+      effectData(effect.data).object === target.object && (effect.expiresTurn === null || effect.expiresTurn >= state.turn))
+      .sort((a, b) => a.timestamp - b.timestamp).at(-1);
+    const controller = activeControl?.controller ?? target.owner;
+    if (target.controller !== controller) {
+      target.controller = controller;
+      target.controlledSinceTurn = state.turn;
     }
   }
-  state.effects = state.effects.filter(effect => effect.expiresTurn === null || effect.expiresTurn > state.turn);
 }
-export function changeControl(state: MatchState, source: ObjectId, object: ObjectId, controller: 0 | 1, expiresTurn: number): void {
+
+export function expireTurnEffects(state: MatchState, context: Pick<EngineContext, 'catalog'>): void {
+  state.effects = state.effects.filter(effect => effect.expiresTurn === null || effect.expiresTurn > state.turn);
+  recomputeControl(state, context);
+}
+export function changeControl(state: MatchState, source: ObjectId, object: ObjectId, controller: 0 | 1, expiresTurn: number | null): void {
   const target = Object.values(state.cards).find(card => card.object === object);
   if (!target) return;
-  target.controller = controller;
+  if (target.controller !== controller) {
+    target.controller = controller;
+    target.controlledSinceTurn = state.turn;
+  }
   state.effects.push({ id: `effect-${state.nextId++}`, timestamp: state.nextId, controller, source, handler: 'borrowed-control',
     data: { object }, expiresTurn });
 }
