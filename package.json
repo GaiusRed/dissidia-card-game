@@ -11,6 +11,8 @@
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test:e2e": "playwright test",
+    "test:ui-design": "npm run build && playwright test --config playwright.ui-design.config.ts",
+    "test:ui-design:report": "playwright show-report playwright-report/ui-design",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:coverage": "node scripts/check-coverage.mjs"
   },

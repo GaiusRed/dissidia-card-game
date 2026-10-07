@@ -1,0 +1,120 @@
+// Diagnostic probes assert observed behavior, not acceptance. Removed after the audit run.
+import { it, expect } from 'vitest';
+import { driver } from '../support/driver';
+import { context } from '../support/harness';
+import { changeControl } from '../../src/rules/continuous';
+import { moveCard } from '../../src/rules/zones';
+import { assertInvariants } from '../../src/rules/invariants';
+import { createSave, inspectSave } from '../../src/storage/save';
+import { legalActions } from '../../src/rules/actions';
+import { loadScenario } from '../../src/scenarios/catalog';
+import { scheduleEntryAbilities } from '../../src/rules/triggers';
+import { LocalHost } from '../../src/host/local-host';
+import 'fake-indexeddb/auto';
+import type { Payment } from '../../src/rules/types';
+const free = (): Payment => ({ discard: [], dullBackups: [], specialDiscard: null, dullSource: false, sacrificeSource: false, sourceElements: {}, spend: {} });
+const pay = (id: string, amount: number, element: 'Fire' | 'Water' = 'Fire'): Payment => ({ ...free(), discard: [id], sourceElements: { [id]: element }, spend: { [element]: amount } });
+const pass = (d: ReturnType<typeof driver>) => expect(d.send({ kind: 'pass' }).ok).toBe(true);
+const card = (d: ReturnType<typeof driver>, number: string) => Object.values(d.state.cards).find(c => c.card === number)!;
+
+it('A01 observed: Summon gives opponent priority', () => {
+  const d = driver({ placements: [{ seat: 0, card: 'P-017R', zone: 'hand' }, { seat: 0, card: 'P-003C', zone: 'field' }, { seat: 0, card: 'P-005R', zone: 'hand' }] });
+  expect(d.send({ kind: 'cast', source: d.object(0, 'P-017R'), targets: [d.object(0, 'P-003C')], mode: null, payment: pay(d.object(0, 'P-005R'), 1) }).ok).toBe(true);
+  expect(d.state.priority).toBe(1);
+});
+it('A02 observed: normal Archive Keeper choice leaves no next actor', () => {
+  const d = driver({ active: 1, placements: [{ seat: 1, card: 'P-031R', zone: 'field' }] });
+  scheduleEntryAbilities(d.state, card(d, 'P-031R').instance, context);
+  pass(d); pass(d);
+  expect(d.state.choice?.reason).toContain('discard');
+  expect(d.answer([d.state.choice!.options[0]!.id]).ok).toBe(true);
+  expect(d.state.choice).toBeNull(); expect(d.state.priority).toBeNull(); expect(d.state.result).toBeNull();
+});
+it('A03 observed: Commander-first duplicate batch leaves variant alive and no priority', () => {
+  const d = driver({ placements: [{ seat: 0, card: 'P-001L', zone: 'field' }, { seat: 0, card: 'P-002C', zone: 'field' }] });
+  pass(d); expect(d.state.choice?.resume.handler).toBe('departure');
+  expect(d.answer(['return']).ok).toBe(true);
+  expect(card(d, 'P-002C').zone).toBe('field'); expect(d.state.priority).toBeNull();
+});
+it('A04 observed: excess Backup choice leaves no priority', () => {
+  const d = driver({ placements: ['P-009C','P-010C','P-011R','P-012H','P-013R','P-014R'].map(number => ({seat: 0 as const, card: number, zone: 'field' as const})) });
+  pass(d); expect(d.answer([d.state.choice!.options[0]!.id]).ok).toBe(true);
+  expect(d.state.priority).toBeNull(); expect(d.state.choice).toBeNull();
+});
+it('A05 observed: newly controlled Forward can attack', () => {
+  const d = driver({ phase: 'attack', active: 1, placements: [{ seat: 0, card: 'P-003C', zone: 'field' }] });
+  changeControl(d.state, '', d.object(0, 'P-003C'), 1, d.state.turn);
+  expect(d.send({ kind: 'attack', members: [d.object(0, 'P-003C')] }, 1).ok).toBe(true);
+});
+it('A06 observed: freshly controlled Commander can pay its dull-icon ability', () => {
+  const d = driver({ placements: [{ seat: 0, card: 'P-001L', zone: 'field', controlledSinceTurn: 3 }, { seat: 0, card: 'P-002C', zone: 'hand' }, { seat: 0, card: 'P-005R', zone: 'hand' }, { seat: 1, card: 'P-024C', zone: 'field' }] });
+  const ability = context.catalog['P-001L']!.abilities[0]!;
+  expect(d.send({ kind: 'activate', source: d.object(0, 'P-001L'), ability: ability.id, targets: [d.object(1, 'P-024C')], payment: { ...pay(d.object(0, 'P-005R'),1), specialDiscard: d.object(0, 'P-002C'), dullSource: true } }).ok).toBe(true);
+});
+it('A07 observed: hand cast consumes an unrequired same-name special discard', () => {
+  const d = driver({ placements: [{ seat: 0, card: 'P-003C', zone: 'hand' }, { seat: 0, card: 'P-004C', zone: 'hand' }, { seat: 0, card: 'P-005R', zone: 'hand' }] });
+  expect(d.send({ kind: 'cast', source: d.object(0, 'P-003C'), targets: [], mode: null, payment: { ...pay(d.object(0, 'P-005R'),1), specialDiscard: d.object(0, 'P-004C') } }).ok).toBe(true);
+  expect(card(d, 'P-004C').zone).toBe('break');
+});
+it('A08 observed: attack accepted with nonempty stack', () => {
+  const d = driver({ phase: 'attack', placements: [{ seat: 0, card: 'P-003C', zone: 'field' }] });
+  const source = card(d, 'P-003C');
+  d.state.stack.push({ id: 'probe', controller: 0, source: source.object, lastKnown: {...source}, handler: 'war-cry', targets: [source.object], mode: null, data: null });
+  expect(d.send({ kind: 'attack', members: [source.object] }).ok).toBe(true);
+});
+it('A09 observed: first-strike blocker deals ordinary simultaneous party damage', () => {
+  const d = driver({ phase: 'attack', placements: [{ seat: 0, card: 'P-003C', zone: 'field' }, { seat: 0, card: 'P-004C', zone: 'field' }, { seat: 1, card: 'P-026R', zone: 'field' }] });
+  const one = d.object(0,'P-003C'); const two = d.object(0,'P-004C');
+  expect(d.send({ kind:'attack', members:[one,two] }).ok).toBe(true); pass(d); pass(d);
+  expect(d.send({kind:'block',blocker:d.object(1,'P-026R')}).ok).toBe(true); pass(d); pass(d);
+  expect(d.answer([], {[one]:3000,[two]:3000}).ok).toBe(true);
+  expect(card(d,'P-026R').zone).toBe('break');
+});
+it('A10 observed: vanished instance passes conservation and schema', () => {
+  const d = driver(); const id=d.state.zones[0].deck.pop()!; delete d.state.cards[id];
+  expect(()=>assertInvariants(d.state,context)).not.toThrow();
+  expect(inspectSave(createSave(d.state,[]),d.state.versions).compatible).toBe(true);
+});
+it('A11 observed: save imports an unknown continuation handler', async () => {
+  const d = driver(); d.state.choice={id:'bad-choice', seat:0,kind:'confirm',reason:'bad',options:[{id:'yes',label:'yes',object:null}],min:1,max:1,allocation:null,resume:{handler:'unknown-script',step:'unknown',data:null}}; d.state.priority=null;
+  const host=new LocalHost();
+  expect((await host.importSave(JSON.stringify(createSave(d.state,[])))).imported).toBe(true);
+});
+it('A12 observed: four presets cannot offer their advertised initial cast', () => {
+  for (const [id,number] of [['commander-third-cast','P-001L'],['multi-ex','P-019H'],['control-conflict','P-039H'],['commander-destinations','P-035C']]) {
+    const state=loadScenario(id!,context); const object=Object.values(state.cards).find(c=>c.card===number)!.object;
+    expect(legalActions(state,state.active,context).some(a=>a.kind==='cast' && a.source===object),id).toBe(false);
+  }
+});
+it('A13 observed: triggered target remains unset throughout response window', () => {
+  const d = driver({active:1,placements:[{seat:1,card:'P-025R',zone:'field'},{seat:0,card:'P-003C',zone:'field'}]});
+  scheduleEntryAbilities(d.state,card(d,'P-025R').instance,context);
+  expect(d.state.choice).toBeNull(); expect(d.state.priority).not.toBeNull(); expect(d.state.stack[0]!.targets).toEqual([]);
+  pass(d); pass(d); expect(d.state.choice?.kind).toBe('targets');
+});
+it('A14 observed: opponent-turn Rising Undertow delay expires before its controllers End Phase', () => {
+  const d=driver({phase:'main2',active:0,priority:1,placements:[{seat:1,card:'P-040R',zone:'hand'},{seat:1,card:'P-023C',zone:'hand'}]});
+  expect(d.send({kind:'cast',source:d.object(1,'P-040R'),targets:[],mode:null,payment:pay(d.object(1,'P-023C'),2,'Water')}).ok).toBe(true);
+  pass(d); pass(d); expect(d.state.effects.some(e=>e.handler==='undertow-discard')).toBe(true);
+  pass(d); pass(d); expect(d.state.phase).toBe('end');
+  pass(d); pass(d); expect(d.state.active).toBe(1); expect(d.state.effects.some(e=>e.handler==='undertow-discard')).toBe(false);
+});
+it('A15 observed: CP generation accepts excessive discard waste', () => {
+  const d=driver({placements:['P-003C','P-004C','P-005R'].map(number=>({seat:0 as const,card:number,zone:'hand' as const}))});
+  const one=d.object(0,'P-004C'); const two=d.object(0,'P-005R');
+  expect(d.send({kind:'cast',source:d.object(0,'P-003C'),targets:[],mode:null,payment:{...free(),discard:[one,two],sourceElements:{[one]:'Fire',[two]:'Fire'},spend:{Fire:1}}}).ok).toBe(true);
+});
+it('A16 observed: First Strike departure trigger resolves before normal battle damage', () => {
+  const d=driver({phase:'attack',placements:[{seat:0,card:'P-006R',zone:'field'},{seat:1,card:'P-023C',zone:'field'},{seat:1,card:'P-033R',zone:'field'}]});
+  expect(d.send({kind:'attack',members:[d.object(0,'P-006R')]}).ok).toBe(true);pass(d);pass(d);
+  expect(d.send({kind:'block',blocker:d.object(1,'P-023C')}).ok).toBe(true);pass(d);pass(d);
+  expect(d.state.combat?.step).toBe('normalDamage');expect(d.state.stack[0]?.handler).toBe('tide-witness-draw');
+  pass(d);pass(d);expect(d.state.choice?.reason).toContain('Tide Witness');expect(d.state.combat?.step).toBe('normalDamage');
+});
+it('A17 observed: queued old-match command applies to a newly started match', async () => {
+  const host=new LocalHost();host.start(1);
+  const state=host.getState();const choice=state.choice!;
+  const pending=host.submit({id:'old-match-command',expectedSeq:state.seq,seat:choice.seat,intent:{kind:'answer',answer:{choice:choice.id,selected:['first'],amounts:{}}}});
+  host.start(1);
+  expect((await pending).ok).toBe(true);expect(host.getState().seq).toBe(1);expect(host.getState().choice?.kind).toBe('mulligan');
+});

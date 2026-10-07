@@ -1,0 +1,258 @@
+{
+  "revision": "89828a6",
+  "command": "npm run test:ui-design",
+  "stats": {
+    "startTime": "2026-10-07T09:43:14.195Z",
+    "duration": 68389.06599999999,
+    "expected": 4,
+    "skipped": 0,
+    "unexpected": 20,
+    "flaky": 0
+  },
+  "tests": [
+    {
+      "project": "1280-normal",
+      "test": "hand hover is unclipped, Commander identity is unique, and inspection changes the hand",
+      "status": "failed",
+      "durationMs": 1421,
+      "errors": [
+        "Error: One interactive representation per physical card",
+        "Error: Lifted card must escape scroll clipping",
+        "Error: Inspect must show the other hand in the table or a labeled inspection browser"
+      ]
+    },
+    {
+      "project": "1280-normal",
+      "test": "crowded battlefield separates both players and controls stay reachable",
+      "status": "failed",
+      "durationMs": 1183,
+      "errors": [
+        "Error: Player 1 Forwards row",
+        "Error: Player 1 Backups row",
+        "Error: Player 2 Forwards row",
+        "Error: Player 2 Backups row"
+      ]
+    },
+    {
+      "project": "1280-normal",
+      "test": "contextual choices use consistent control heights without hiding the hand",
+      "status": "passed",
+      "durationMs": 1078,
+      "errors": []
+    },
+    {
+      "project": "1280-normal",
+      "test": "deck search retains focus through a real typing sequence",
+      "status": "failed",
+      "durationMs": 6109,
+      "errors": [
+        "Error: Rerender must retain input focus and all typed characters",
+        "Error: expect(locator).toBeFocused() failed"
+      ]
+    },
+    {
+      "project": "1280-normal",
+      "test": "mandatory two-card discard offers revision and explicit confirmation",
+      "status": "failed",
+      "durationMs": 1130,
+      "errors": [
+        "Error: A mandatory multi-card decision needs a Confirm control",
+        "Error: Selecting one card edits a draft instead of submitting an invalid answer"
+      ]
+    },
+    {
+      "project": "1280-normal",
+      "test": "selected-card actions fit the footer and use equal peer button heights",
+      "status": "failed",
+      "durationMs": 1362,
+      "errors": [
+        "Error: Card actions fit their reserved footer area",
+        "Error: Card actions receive pointer input",
+        "Error: Peer card actions use equal heights"
+      ]
+    },
+    {
+      "project": "1280-reduced",
+      "test": "hand hover is unclipped, Commander identity is unique, and inspection changes the hand",
+      "status": "failed",
+      "durationMs": 1376,
+      "errors": [
+        "Error: One interactive representation per physical card",
+        "Error: Lifted card must escape scroll clipping",
+        "Error: Inspect must show the other hand in the table or a labeled inspection browser",
+        "Error: Reduced motion removes card travel transitions"
+      ]
+    },
+    {
+      "project": "1280-reduced",
+      "test": "crowded battlefield separates both players and controls stay reachable",
+      "status": "failed",
+      "durationMs": 929,
+      "errors": [
+        "Error: Player 1 Forwards row",
+        "Error: Player 1 Backups row",
+        "Error: Player 2 Forwards row",
+        "Error: Player 2 Backups row"
+      ]
+    },
+    {
+      "project": "1280-reduced",
+      "test": "contextual choices use consistent control heights without hiding the hand",
+      "status": "passed",
+      "durationMs": 864,
+      "errors": []
+    },
+    {
+      "project": "1280-reduced",
+      "test": "deck search retains focus through a real typing sequence",
+      "status": "failed",
+      "durationMs": 6106,
+      "errors": [
+        "Error: Rerender must retain input focus and all typed characters",
+        "Error: expect(locator).toBeFocused() failed"
+      ]
+    },
+    {
+      "project": "1280-reduced",
+      "test": "mandatory two-card discard offers revision and explicit confirmation",
+      "status": "failed",
+      "durationMs": 1649,
+      "errors": [
+        "Error: A mandatory multi-card decision needs a Confirm control",
+        "Error: Selecting one card edits a draft instead of submitting an invalid answer"
+      ]
+    },
+    {
+      "project": "1280-reduced",
+      "test": "selected-card actions fit the footer and use equal peer button heights",
+      "status": "failed",
+      "durationMs": 1588,
+      "errors": [
+        "Error: Card actions fit their reserved footer area",
+        "Error: Card actions receive pointer input",
+        "Error: Peer card actions use equal heights"
+      ]
+    },
+    {
+      "project": "1920-normal",
+      "test": "hand hover is unclipped, Commander identity is unique, and inspection changes the hand",
+      "status": "failed",
+      "durationMs": 1790,
+      "errors": [
+        "Error: One interactive representation per physical card",
+        "Error: Lifted card must escape scroll clipping",
+        "Error: Inspect must show the other hand in the table or a labeled inspection browser"
+      ]
+    },
+    {
+      "project": "1920-normal",
+      "test": "crowded battlefield separates both players and controls stay reachable",
+      "status": "failed",
+      "durationMs": 944,
+      "errors": [
+        "Error: Player 1 Forwards row",
+        "Error: Player 1 Backups row",
+        "Error: Player 2 Forwards row",
+        "Error: Player 2 Backups row"
+      ]
+    },
+    {
+      "project": "1920-normal",
+      "test": "contextual choices use consistent control heights without hiding the hand",
+      "status": "passed",
+      "durationMs": 1008,
+      "errors": []
+    },
+    {
+      "project": "1920-normal",
+      "test": "deck search retains focus through a real typing sequence",
+      "status": "failed",
+      "durationMs": 6158,
+      "errors": [
+        "Error: Rerender must retain input focus and all typed characters",
+        "Error: expect(locator).toBeFocused() failed"
+      ]
+    },
+    {
+      "project": "1920-normal",
+      "test": "mandatory two-card discard offers revision and explicit confirmation",
+      "status": "failed",
+      "durationMs": 1764,
+      "errors": [
+        "Error: A mandatory multi-card decision needs a Confirm control",
+        "Error: Selecting one card edits a draft instead of submitting an invalid answer"
+      ]
+    },
+    {
+      "project": "1920-normal",
+      "test": "selected-card actions fit the footer and use equal peer button heights",
+      "status": "failed",
+      "durationMs": 1267,
+      "errors": [
+        "Error: Card actions fit their reserved footer area",
+        "Error: Peer card actions use equal heights"
+      ]
+    },
+    {
+      "project": "1920-reduced",
+      "test": "hand hover is unclipped, Commander identity is unique, and inspection changes the hand",
+      "status": "failed",
+      "durationMs": 1895,
+      "errors": [
+        "Error: One interactive representation per physical card",
+        "Error: Lifted card must escape scroll clipping",
+        "Error: Inspect must show the other hand in the table or a labeled inspection browser",
+        "Error: Reduced motion removes card travel transitions"
+      ]
+    },
+    {
+      "project": "1920-reduced",
+      "test": "crowded battlefield separates both players and controls stay reachable",
+      "status": "failed",
+      "durationMs": 995,
+      "errors": [
+        "Error: Player 1 Forwards row",
+        "Error: Player 1 Backups row",
+        "Error: Player 2 Forwards row",
+        "Error: Player 2 Backups row"
+      ]
+    },
+    {
+      "project": "1920-reduced",
+      "test": "contextual choices use consistent control heights without hiding the hand",
+      "status": "passed",
+      "durationMs": 1013,
+      "errors": []
+    },
+    {
+      "project": "1920-reduced",
+      "test": "deck search retains focus through a real typing sequence",
+      "status": "failed",
+      "durationMs": 6168,
+      "errors": [
+        "Error: Rerender must retain input focus and all typed characters",
+        "Error: expect(locator).toBeFocused() failed"
+      ]
+    },
+    {
+      "project": "1920-reduced",
+      "test": "mandatory two-card discard offers revision and explicit confirmation",
+      "status": "failed",
+      "durationMs": 1732,
+      "errors": [
+        "Error: A mandatory multi-card decision needs a Confirm control",
+        "Error: Selecting one card edits a draft instead of submitting an invalid answer"
+      ]
+    },
+    {
+      "project": "1920-reduced",
+      "test": "selected-card actions fit the footer and use equal peer button heights",
+      "status": "failed",
+      "durationMs": 1222,
+      "errors": [
+        "Error: Card actions fit their reserved footer area",
+        "Error: Peer card actions use equal heights"
+      ]
+    }
+  ]
+}

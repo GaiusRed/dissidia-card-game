@@ -1,0 +1,26 @@
+
+ RUN  v5.0.3 C:/MyProjects/DissidiaCardGame
+
+ ✓ tests/rules/second-audit-probes.test.ts > A01 observed: Summon gives opponent priority 9ms
+ ✓ tests/rules/second-audit-probes.test.ts > A02 observed: normal Archive Keeper choice leaves no next actor 3ms
+ ✓ tests/rules/second-audit-probes.test.ts > A03 observed: Commander-first duplicate batch leaves variant alive and no priority 1ms
+ ✓ tests/rules/second-audit-probes.test.ts > A04 observed: excess Backup choice leaves no priority 1ms
+ ✓ tests/rules/second-audit-probes.test.ts > A05 observed: newly controlled Forward can attack 1ms
+ ✓ tests/rules/second-audit-probes.test.ts > A06 observed: freshly controlled Commander can pay its dull-icon ability 1ms
+ ✓ tests/rules/second-audit-probes.test.ts > A07 observed: hand cast consumes an unrequired same-name special discard 1ms
+ ✓ tests/rules/second-audit-probes.test.ts > A08 observed: attack accepted with nonempty stack 1ms
+ ✓ tests/rules/second-audit-probes.test.ts > A09 observed: first-strike blocker deals ordinary simultaneous party damage 4ms
+ ✓ tests/rules/second-audit-probes.test.ts > A10 observed: vanished instance passes conservation and schema 8ms
+ ✓ tests/rules/second-audit-probes.test.ts > A11 observed: save imports an unknown continuation handler 7ms
+ ✓ tests/rules/second-audit-probes.test.ts > A12 observed: four presets cannot offer their advertised initial cast 3ms
+ ✓ tests/rules/second-audit-probes.test.ts > A13 observed: triggered target remains unset throughout response window 2ms
+ ✓ tests/rules/second-audit-probes.test.ts > A14 observed: opponent-turn Rising Undertow delay expires before its controllers End Phase 3ms
+ ✓ tests/rules/second-audit-probes.test.ts > A15 observed: CP generation accepts excessive discard waste 1ms
+ ✓ tests/rules/second-audit-probes.test.ts > A16 observed: First Strike departure trigger resolves before normal battle damage 2ms
+ ✓ tests/rules/second-audit-probes.test.ts > A17 observed: queued old-match command applies to a newly started match 5ms
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  17:34:01
+   Duration  1.09s (import 52%, transform 42%, tests 5%, worker 1%)
+

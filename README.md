@@ -28,6 +28,15 @@ npm run build
 npm run test:e2e
 ```
 
+The separate UI design audit captures both desktop sizes in normal and reduced motion:
+
+```powershell
+npm run test:ui-design
+npm run test:ui-design:report
+```
+
+This suite currently reports known failures. See the [second audit](docs/superpowers/audits/2026-10-07-mvp-second-branch-audit.md) and [repair design](docs/superpowers/specs/2026-10-07-dissidia-mvp-second-audit-repair-design.md).
+
 For offline installation, run `npm run build` and serve the `dist` folder. Open it once while online, wait for **Ready for offline play**, then reload with network disabled. The service worker caches this build locally.
 
 Read [playtesting instructions](docs/playtesting.md) for control details, saves, and known gaps.
