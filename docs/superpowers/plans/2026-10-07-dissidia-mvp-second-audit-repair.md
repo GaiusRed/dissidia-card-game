@@ -913,7 +913,7 @@ git diff --check
 - [x] Mark milestone 2 complete only when every card behavior and rules coverage row has an executed assertion, including batches, choices, combat, effects, and loops. The 40-card map and rule-area table point to executed assertions, and the fresh coverage-matrix gate verified every linked file. Broader cross-card permutations remain documented as limitations beyond the original milestone exit condition.
 - [x] Mark milestone 3 complete only with normal contested duels, presets, editor, cached offline completion, recovery, real update lifecycle, the four-project design gate, and the unscripted playtest. The 2026-10-08 offline duel and export are recorded in `docs/playtest-results.md`; fresh E2E, release, and 168-case UI gates pass. This is internal exploratory evidence, not independent approval.
 - [x] Replace stale test counts and claims with measured current results. The verification audit records the latest command results. Milestones 1–3 meet their current plan gates; broader interactions and independent human review remain documented limitations.
-- [ ] Deliver a concise summary with repaired behavior, test results, visual evidence links, and remaining risks. The user previously authorized commit and push; complete those actions after the final verification and review.
+- [x] Deliver a concise summary with repaired behavior, test results, visual evidence links, and remaining risks. The user authorized commit and push. Implementation and evidence are committed as `ae0fc73` and pushed to `feature/mvp-game-design-spec` over SSH after the HTTPS OAuth token rejected the workflow file for lacking `workflow` scope.
 
 ## Traceability and review checkpoints
 
