@@ -29,7 +29,7 @@ export function dealPlayerDamage(state: MatchState, seat: Seat, amount: number, 
   for (let index = 0; index < amount; index += 1) {
     const instance = state.zones[seat].deck[0];
     if (!instance) {
-      state.work.push({ handler: 'rule-process', step: 'empty-deck', data: { seat } });
+      state.work.push({ kind: 'empty-deck', seat });
       events.push({ id: `event-${state.nextId++}`, type: 'player.attempted-empty-draw', data: { seat, source } });
       break;
     }
@@ -38,27 +38,28 @@ export function dealPlayerDamage(state: MatchState, seat: Seat, amount: number, 
     const damaged = state.cards[old.instance]!;
     if (context.catalog[old.card]?.ex) eligible.push(damaged.object);
   }
-  if (eligible.length) state.work.push({ handler: 'damage', step: 'offer-ex', data: { seat, remaining: eligible } });
+  if (eligible.length) state.work.push({ kind: 'offer-ex', seat, remaining: eligible });
   return events;
 }
 
 /** Open the next mandatory timing decision in an ordered damage batch. */
 export function continueDamageEx(state: MatchState, context: EngineContext): void {
   if (state.choice || state.result) return;
-  const index = state.work.findIndex(item => item.handler === 'damage' && item.step === 'offer-ex');
+  const index = state.work.findIndex(item => item.kind === 'offer-ex');
   if (index < 0) return;
   const continuation = state.work[index]!;
-  const data = continuation.data as { seat: Seat; remaining: ObjectId[] };
+  if (continuation.kind !== 'offer-ex') return;
+  const data = continuation;
   const remaining = [...data.remaining];
   while (remaining.length) {
     const object = remaining.shift()!;
     const source = Object.values(state.cards).find(card => card.object === object);
     const definition = source && context.catalog[source.card];
-    state.work[index] = { ...continuation, data: { seat: data.seat, remaining } };
+    state.work[index] = { ...continuation, remaining };
     const registered = source && context.registry?.manifest.cards.find(entry => entry.number === source.card);
     const typed = source && registered && context.registry
       ? context.registry.card(source.card).abilities.find(ability => ability.ex) : undefined;
-    if (source && registered && typed && context.registry) {
+    if (source && registered && typed) {
       state.execution.frames.push({
         id: `frame-${state.nextId++}`,
         resume: { script: source.card, version: registered.behaviorVersion, ability: typed.id, step: 'resolve', payload: null },
@@ -69,16 +70,8 @@ export function continueDamageEx(state: MatchState, context: EngineContext): voi
       state.priority = null;
       return;
     }
-    if (!source || source.zone !== 'damage' || !definition?.ex || !definition.exHandler || !context.handlers?.[definition.exHandler]) continue;
-    state.choice = {
-      id: `choice-${state.nextId++}`, seat: data.seat, kind: 'confirm',
-      reason: `${definition.name}: use this EX Burst?`,
-      options: [{ id: 'use', label: 'Use EX Burst', object }, { id: 'skip', label: 'Skip', object }],
-      min: 1, max: 1, allocation: null,
-      resume: { handler: definition.exHandler, step: 'decision', data: { seat: data.seat, source: object } },
-    };
-    state.priority = null;
-    return;
+    if (!source || source.zone !== 'damage' || !definition?.ex) continue;
+    throw new Error(`EX card ${source.card} has no registered EX script.`);
   }
   state.work.splice(index, 1);
   state.priority = state.active;

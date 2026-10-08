@@ -28,12 +28,10 @@ export const card: CardDefinition = {
     {
       "id": "banner-smith-field",
       "kind": "field",
-      "handler": "banner-smith-buff",
       "text": "Fire Forwards you control gain 1000 power.",
       "ex": false
     }
   ],
-  "summonHandler": null,
   "ex": false,
   "text": "Fire Forwards you control gain 1000 power."
 };

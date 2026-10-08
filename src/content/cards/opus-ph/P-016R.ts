@@ -1,9 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
-import { twoDamageSummon } from '../../shared/summon-effects';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
-
-export const abilityHandlers = { 'twin-embers': twoDamageSummon };
 
 export const card: CardDefinition = {
   "number": "P-016R",
@@ -25,7 +22,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "twin-embers",
   "summonTarget": { "min": 2, "max": 2, "zones": ["field"], "types": ["Forward"], "controller": "any", "dull": null },
   "ex": false,
   "text": "Choose 2 Forwards. Deal each of them 3000 damage."

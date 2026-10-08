@@ -4,10 +4,10 @@ import type { CardDefinition } from '../../src/rules/types';
 import { opusPh } from '../../src/content/opus-ph';
 
 export function syntheticCantripScript(): CardScript {
-  const { exHandler: _unusedExHandler, ...summon } = opusPh['P-015C']!;
+  const summon = opusPh['P-015C']!;
   const metadata: CardDefinition = {
     ...summon, number: 'TEST-001', name: 'Synthetic Cantrip', cost: 0, ex: false,
-    text: 'Draw one card.', summonHandler: 'synthetic-cantrip',
+    text: 'Draw one card.',
     summonTarget: { min: 0, max: 0, zones: ['field'], types: ['Forward'], controller: 'any', dull: null },
     abilities: [],
   };

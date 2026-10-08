@@ -30,21 +30,7 @@ for (const testPath of new Set(testPaths)) {
 
 for (const [file, source] of cardSources) {
   if (!source.includes('export default card')) errors.push(`Card module ${file} does not export its definition.`);
-  const hasScriptReference = value => source.split(value).length - 1 > 1;
-  const executableAbilities = [...source.matchAll(/"kind":\s*"(action|special|auto)"[\s\S]*?"handler":\s*"([^"]+)"/g)];
-  for (const [, kind, handler] of executableAbilities) {
-    if (!hasScriptReference(handler)) {
-      errors.push(`Card module ${file} does not register its ${kind} script ${handler}.`);
-    }
-  }
-  const summon = source.match(/"summonHandler":\s*"([^"]+)"/)?.[1];
-  if (summon && !hasScriptReference(summon)) {
-    errors.push(`Card module ${file} does not register its Summon script ${summon}.`);
-  }
-  const exHandler = source.match(/"exHandler":\s*"([^"]+)"/)?.[1];
-  if (exHandler && !hasScriptReference(exHandler)) {
-    errors.push(`Card module ${file} does not register its EX Burst script ${exHandler}.`);
-  }
+  if (!/export const script\b/.test(source)) errors.push(`Card module ${file} does not export a typed card script.`);
   if (source.includes('"kind": "field"') && !/fieldEffects:\s*\[\s*\{[\s\S]*?effects:/.test(source)) {
     errors.push(`Card module ${file} has a field ability without a power provider.`);
   }

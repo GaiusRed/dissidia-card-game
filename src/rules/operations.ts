@@ -1,6 +1,9 @@
 import { addEffect, changeControl, effectivePower } from './continuous';
 import { dealPlayerDamage, replacementDamage } from './damage';
 import { scheduleDepartureAbilities } from './triggers';
+import { isTriggerTargetLegal, openTriggerTargetChoice } from './triggers';
+import { openTriggerOrder, runEndCheckpoint } from './priority';
+import { resolveCombat } from './combat';
 import { moveCard } from './zones';
 import { shuffle } from './random';
 import { advanceTurnStep } from './turns';
@@ -96,15 +99,18 @@ export function applyOperation(state: MatchState, operation: Operation, context:
       case 'power': {
         const target = object(state, operation.object);
         if (!target || target.zone !== 'field') return error('UNKNOWN_OBJECT', 'The power operation requires a card on the field.');
-        addEffect(state, operation.mode === 'base' ? 'power-set' : 'power-modifier', operation.source, target.object,
-          operation.mode === 'base' ? { value: operation.value } : { amount: operation.value }, operation.expiresTurn);
+        if (operation.mode === 'base') addEffect(state, { kind: 'power-set', controller: state.active,
+          source: operation.source, object: target.object, value: operation.value, expiresTurn: operation.expiresTurn });
+        else addEffect(state, { kind: 'power-modifier', controller: state.active,
+          source: operation.source, object: target.object, amount: operation.value, expiresTurn: operation.expiresTurn });
         events.push(event(state, 'power.changed', { object: target.object, mode: operation.mode, value: operation.value }));
         break;
       }
       case 'keyword': {
         const target = object(state, operation.object);
         if (!target || target.zone !== 'field') return error('UNKNOWN_OBJECT', 'The keyword operation requires a card on the field.');
-        addEffect(state, 'keyword-add', operation.source, target.object, { keyword: operation.keyword }, operation.expiresTurn);
+        addEffect(state, { kind: 'keyword-add', controller: state.active, source: operation.source, object: target.object,
+          keyword: operation.keyword, expiresTurn: operation.expiresTurn });
         events.push(event(state, 'keyword.granted', { object: target.object, keyword: operation.keyword }));
         break;
       }
@@ -168,6 +174,64 @@ export function applyOperation(state: MatchState, operation: Operation, context:
         } });
         break;
       }
+      case 'trigger-target': {
+        const item = state.stack.find(candidate => candidate.id === operation.item);
+        if (!item || !isTriggerTargetLegal(state, item, operation.target, context)) {
+          return error('STALE_CHOICE', 'The selected trigger target is no longer legal.');
+        }
+        const data = item.data && typeof item.data === 'object' && !Array.isArray(item.data)
+          ? item.data as Record<string, import('./types').Json> : {};
+        const { declarationTarget: _declarationTarget, ...remainingData } = data;
+        item.targets = [operation.target];
+        item.data = { ...remainingData, targets: [operation.target] };
+        events.push(event(state, 'trigger.target-declared', { item: item.id, target: operation.target }));
+        openTriggerTargetChoice(state, context);
+        if (!state.choice) { state.priority = state.active; state.passes = 0; }
+        break;
+      }
+      case 'order-triggers': {
+        const group = state.triggers[0];
+        if (!group || group.seat !== operation.seat || operation.items.length !== group.items.length ||
+            new Set(operation.items).size !== operation.items.length ||
+            operation.items.some(id => !group.items.some(item => item.id === id))) {
+          return error('STALE_CHOICE', 'The simultaneous trigger group changed before it was ordered.');
+        }
+        state.triggers.shift();
+        for (const id of operation.items) state.stack.push(group.items.find(item => item.id === id)!);
+        events.push(event(state, 'trigger.order-chosen', { seat: operation.seat, order: operation.items }));
+        openTriggerOrder(state, context);
+        break;
+      }
+      case 'combat-allocation': {
+        const combat = state.combat;
+        const values = Object.entries(operation.amounts);
+        const total = values.reduce((sum, [, amount]) => sum + amount, 0);
+        if (!combat || combat.step !== 'damage' || values.some(([id, amount]) => !combat.attackers.includes(id) || amount % 1000 !== 0) ||
+            !combat.blocker || total !== effectivePower(state, combat.blocker, context)) {
+          return error('STALE_CHOICE', 'The party is no longer in its damage allocation step.');
+        }
+        combat.allocation = { ...operation.amounts };
+        events.push(event(state, 'combat.damage-allocated', { amounts: operation.amounts }));
+        events.push(...resolveCombat(state, context));
+        break;
+      }
+      case 'commander-destination': {
+        const card = state.cards[operation.instance];
+        if (!card || card.zone !== 'field' || state.commanders[operation.seat].instance !== card.instance ||
+            card.owner !== operation.seat || (operation.selected !== 'return' && operation.selected !== 'destination')) {
+          return error('STALE_CHOICE', 'The Commander destination choice is no longer legal.');
+        }
+        const old = { ...card };
+        const power = effectivePower(state, card.object, context);
+        const destination = operation.selected === 'return' ? 'commander' : operation.destination;
+        moveCard(state, card.instance, destination);
+        scheduleDepartureAbilities(state, old, destination, context, power);
+        events.push(event(state, 'commander.departed', { instance: old.instance, oldObject: old.object, destination }));
+        break;
+      }
+      case 'end-phase-checkpoint':
+        events.push(...runEndCheckpoint(state, context));
+        break;
     }
     return { events, error: null };
   } catch (cause) {

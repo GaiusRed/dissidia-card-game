@@ -43,7 +43,7 @@ describe('game setup', () => {
     expect(state.zones[chooser].hand).toHaveLength(6);
   });
 
-  it('waits for the starting-player choice before drawing either opening hand', () => {
+  it('F25: waits for the starting-player choice before drawing either opening hand', () => {
     const state = createMatch(options, context);
     expect(state.zones[0].hand).toHaveLength(0);
     expect(state.zones[1].hand).toHaveLength(0);

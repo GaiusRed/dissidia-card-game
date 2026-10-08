@@ -56,13 +56,23 @@ export function projectView(state: MatchState, seat: Seat | null = null, log: Ru
   const handTray = context && seat !== null ? state.zones[traySeat].hand.map(instance => visibleTrayCard(instance, 'hand'))
     .filter((item): item is TrayCard => item !== null) : [];
   const commanderInstance = state.commanders[traySeat].instance;
+  const resolvingFrame = state.execution.frames.find(frame => frame.mode === 'stack')
+    ?? [...state.execution.frames].reverse().find(frame => frame.mode === 'ex' || frame.mode === 'rule');
+  const resolvingCard = !resolvingFrame ? state.stackCards.map(instance => state.cards[instance])
+    .find(card => card?.zone === 'stack' && !state.stack.some(item => item.source === card.object)) : undefined;
   const commanderTray = seat !== null && state.cards[commanderInstance]?.zone === 'commander'
     ? visibleTrayCard(commanderInstance, 'commander') : null;
   return {
     generation, seq: visible.seq, turn: visible.turn, phase: visible.phase, active: visible.active,
     priority: visible.priority, decisionSeat: visible.choice?.seat ?? visible.priority,
     choice, cards: visible.cards, presentations, zones: visible.zones, deckCounts, field: visible.field, log: JSON.parse(JSON.stringify(safeLog)) as RuleEvent[],
-    stackCards: visible.stackCards, stack: visible.stack, commanders: visible.commanders,
+    stackCards: visible.stackCards, stack: visible.stack.map(item => ({ id: item.id, controller: item.controller,
+      source: item.source, lastKnown: item.lastKnown, targets: [...item.targets], mode: item.mode, ability: item.resume.ability })),
+    resolving: resolvingFrame ? { source: resolvingFrame.source, controller: resolvingFrame.controller, ability: resolvingFrame.resume.ability,
+      lastKnown: resolvingFrame.lastKnown, targets: resolvingFrame.targets }
+      : resolvingCard ? { source: resolvingCard.object, controller: resolvingCard.controller, ability: 'Effect in progress',
+        lastKnown: resolvingCard, targets: [] } : null,
+    commanders: visible.commanders,
     passes: visible.passes, result: visible.result, versions: visible.versions, combat: visible.combat,
     castAccess,
     actions: context && seat !== null ? legalActions(state, traySeat, context) : [],

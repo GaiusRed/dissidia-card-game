@@ -1,16 +1,7 @@
-import { addPower } from '../../../rules/continuous';
-import type { AbilityHandler, CardDefinition } from '../../../rules/types';
-import { chooseForward } from '../../shared/card-helpers';
-import { emit } from '../../shared/legacy';
+import type { CardDefinition } from '../../../rules/types';
 import type { CardScript } from '../../../rules/contracts/card-script';
 import { z } from 'zod';
 import { selfEntryTrigger } from '../../shared/script-helpers';
-
-const duskReaverEnter: AbilityHandler = chooseForward('Dusk Reaver', (context, target) => {
-  addPower(context.state, context.frame.handler, target.object, -2000, context.state.turn);
-  return emit(context.state, 'forward.power-reduced', { object: target.object, amount: 2000 });
-});
-export const abilityHandlers = { 'dusk-reaver-enter': duskReaverEnter };
 
 export const card: CardDefinition = {
   "number": "P-007H",
@@ -37,14 +28,12 @@ export const card: CardDefinition = {
     {
       "id": "dusk-reaver-enter",
       "kind": "auto",
-      "handler": "dusk-reaver-enter",
       "text": "When Dusk Reaver enters the field, choose 1 Forward. It loses 2000 power until the end of the turn.",
       "ex": false,
       "trigger": "enter",
       "target": { "zones": ["field"], "types": ["Forward"], "elements": [], "owner": "any", "controller": "any", "dull": null }
     }
   ],
-  "summonHandler": null,
   "ex": false,
   "text": "When Dusk Reaver enters the field, choose 1 Forward. It loses 2000 power until the end of the turn."
 };

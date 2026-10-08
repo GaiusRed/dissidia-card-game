@@ -9,7 +9,58 @@ import type { EngineContext } from '../../src/rules/types';
 function send(state: ReturnType<typeof fixture>['state'], seat: 0 | 1, intent: { kind: 'attack'; members: string[] } | { kind: 'block'; blocker: string | null } | { kind: 'pass' }) {
   return applyCommand(state, { id: `c${state.seq}`, expectedSeq: state.seq, seat, intent: intent as never }, context);
 }
+function pendingPartyAllocation() {
+  let state = fixture({ phase: 'attack', placements: [
+    { seat: 0, card: 'P-005R', zone: 'field', controlledSinceTurn: 2 },
+    { seat: 0, card: 'P-006R', zone: 'field', controlledSinceTurn: 2 },
+    { seat: 1, card: 'P-023C', zone: 'field', controlledSinceTurn: 1 },
+  ] }).state;
+  const first = Object.values(state.cards).find(card => card.card === 'P-005R')!;
+  const second = Object.values(state.cards).find(card => card.card === 'P-006R')!;
+  const blocker = Object.values(state.cards).find(card => card.card === 'P-023C')!;
+  for (const [seat, intent] of [
+    [0, { kind: 'attack', members: [first.object, second.object] }], [0, { kind: 'pass' }], [1, { kind: 'pass' }],
+    [1, { kind: 'block', blocker: blocker.object }], [0, { kind: 'pass' }], [1, { kind: 'pass' }],
+  ] as const) {
+    const next = send(state, seat, intent as never);
+    if (!next.ok) throw new Error(`${next.error.code}: ${next.error.message}`);
+    state = next.state;
+  }
+  if (state.choice?.kind !== 'allocation') throw new Error('Party combat should request an allocation.');
+  return { state, first, second, blocker };
+}
 describe('sequential combat', () => {
+  it('applies Dawn Guardian damage replacement to combat damage', () => {
+    let state = fixture({ phase: 'attack', active: 1, placements: [
+      { seat: 1, card: 'P-028H', zone: 'field', controlledSinceTurn: 2 },
+      { seat: 0, card: 'P-008H', zone: 'field' },
+    ] }).state;
+    const attacker = Object.values(state.cards).find(card => card.card === 'P-028H')!;
+    const guardian = Object.values(state.cards).find(card => card.card === 'P-008H')!;
+    const attack = send(state, 1, { kind: 'attack', members: [attacker.object] });
+    expect(attack.ok).toBe(true);
+    if (!attack.ok) return;
+    state = attack.state;
+    for (const seat of [1, 0] as const) {
+      const passed = send(state, seat, { kind: 'pass' });
+      expect(passed.ok).toBe(true);
+      if (!passed.ok) return;
+      state = passed.state;
+    }
+    const block = send(state, 0, { kind: 'block', blocker: guardian.object });
+    expect(block.ok).toBe(true);
+    if (!block.ok) return;
+    state = block.state;
+    for (const seat of [1, 0] as const) {
+      const passed = send(state, seat, { kind: 'pass' });
+      expect(passed.ok).toBe(true);
+      if (!passed.ok) return;
+      state = passed.state;
+    }
+    expect(state.cards[guardian.instance]!.damage).toBe(6000);
+    expect(state.cards[attacker.instance]!.zone).toBe('break');
+  });
+
   it('completes an unblocked attack in one damage window without extra pass windows', () => {
     let state = fixture({ phase: 'attack', placements: [
       { seat: 0, card: 'P-005R', zone: 'field', controlledSinceTurn: 3 },
@@ -252,7 +303,7 @@ describe('sequential combat', () => {
     expect(state.combat?.step).toBe('normalDamage');
     expect(state.cards[attacker.instance]!.zone).toBe('break');
     expect(state.choice).toBeNull();
-    expect(state.stack.some(item => item.handler === 'cinder-witness-damage')).toBe(false);
+    expect(state.stack.some(item => item.resume.ability === 'cinder-witness-leave')).toBe(false);
     expect(state.triggers.length).toBeGreaterThan(0);
     state = JSON.parse(JSON.stringify(state)) as typeof state;
 
@@ -264,8 +315,8 @@ describe('sequential combat', () => {
     }
     expect(state.combat).toBeNull();
     expect(state.cards[blocker.instance]!.damage).toBe(0);
-    expect(state.choice?.resume).toMatchObject({ handler: 'trigger-declaration', step: 'target' });
-    expect(state.stack.some(item => item.handler === 'cinder-witness-damage')).toBe(true);
+    expect(state.choice?.resume).toMatchObject({ script: 'rules', ability: 'choice-trigger', step: 'target' });
+    expect(state.stack.some(item => item.resume.ability === 'cinder-witness-leave')).toBe(true);
   });
 
   it('deals one damage from an unblocked Haste Forward and lets another attack continue', () => {
@@ -344,25 +395,10 @@ describe('sequential combat', () => {
   });
 
   it('validates party damage allocations after save and reload', () => {
-    let state = fixture({ phase: 'attack', placements: [
-      { seat: 0, card: 'P-005R', zone: 'field', controlledSinceTurn: 2 },
-      { seat: 0, card: 'P-006R', zone: 'field', controlledSinceTurn: 2 },
-      { seat: 1, card: 'P-023C', zone: 'field', controlledSinceTurn: 1 },
-    ] }).state;
-    const first = Object.values(state.cards).find(card => card.card === 'P-005R')!;
-    const second = Object.values(state.cards).find(card => card.card === 'P-006R')!;
-    const blocker = Object.values(state.cards).find(card => card.card === 'P-023C')!;
-    const issue = (seat: 0 | 1, intent: Parameters<typeof send>[2]) => applyCommand(state, {
-      id: `allocation-${state.seq}`, expectedSeq: state.seq, seat, intent: intent as never,
+    let { state, first, second, blocker } = pendingPartyAllocation();
+    const issue = (current: typeof state, seat: 0 | 1, intent: Parameters<typeof send>[2]) => applyCommand(current, {
+      id: `allocation-${current.seq}`, expectedSeq: current.seq, seat, intent: intent as never,
     }, context);
-    for (const [seat, intent] of [
-      [0, { kind: 'attack', members: [first.object, second.object] }], [0, { kind: 'pass' }], [1, { kind: 'pass' }],
-      [1, { kind: 'block', blocker: blocker.object }], [0, { kind: 'pass' }], [1, { kind: 'pass' }],
-    ] as const) {
-      const next = issue(seat, intent as never);
-      if (!next.ok) throw new Error(`${next.error.code}: ${next.error.message}`);
-      state = next.state;
-    }
     expect(state.choice?.kind).toBe('allocation');
     state = JSON.parse(JSON.stringify(state)) as typeof state;
     const pending = state.choice!;
@@ -374,19 +410,34 @@ describe('sequential combat', () => {
     ];
     const before = JSON.stringify(state);
     for (const [index, amounts] of invalid.entries()) {
-      const rejected = applyCommand(state, { id: `bad-allocation-${index}`, expectedSeq: state.seq, seat: 1,
-        intent: { kind: 'answer', answer: { choice: pending.id, selected: [], amounts } } }, context);
+      const rejected = issue(state, 1, { kind: 'answer', answer: { choice: pending.id, selected: [], amounts } } as never);
       expect(rejected.ok).toBe(false);
     }
     expect(JSON.stringify(state)).toBe(before);
-    const accepted = applyCommand(state, { id: `good-allocation-${state.seq}`, expectedSeq: state.seq, seat: 1,
-      intent: { kind: 'answer', answer: { choice: pending.id, selected: [], amounts: { [first.object]: 1000, [second.object]: 2000 } } } }, context);
+    const accepted = issue(state, 1, { kind: 'answer', answer: { choice: pending.id, selected: [], amounts: { [first.object]: 1000, [second.object]: 2000 } } } as never);
     expect(accepted.ok).toBe(true);
     if (!accepted.ok) return;
     expect(accepted.state.cards[first.instance]!.damage).toBe(1000);
     expect(accepted.state.cards[second.instance]!.damage).toBe(2000);
     expect(accepted.state.cards[blocker.instance]!.zone).toBe('break');
     expect(accepted.state.combat).toBeNull();
+  });
+  it('accepts damage concentrated on either member of an attacking party', () => {
+    for (const [assigned, unassigned] of [['first', 'second'], ['second', 'first']] as const) {
+      const { state, first, second } = pendingPartyAllocation();
+      const target = assigned === 'first' ? first : second;
+      const other = unassigned === 'first' ? first : second;
+      const result = applyCommand(state, { id: `focused-allocation-${state.seq}`, expectedSeq: state.seq, seat: 1,
+        intent: { kind: 'answer', answer: { choice: state.choice!.id, selected: [], amounts: { [target.object]: 3000 } } } }, context);
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.state.cards[target.instance]!.damage).toBe(3000);
+      expect(result.state.cards[other.instance]!.damage).toBe(0);
+      expect(result.state.cards[first.instance]!.zone).toBe('field');
+      expect(result.state.cards[second.instance]!.zone).toBe('field');
+      expect(result.state.cards[Object.values(result.state.cards).find(card => card.card === 'P-023C')!.instance]!.zone).toBe('break');
+      expect(result.state.combat).toBeNull();
+    }
   });
 });
 
@@ -462,7 +513,7 @@ describe('activated ability stack', () => {
       expect(pass.ok).toBe(true); if (!pass.ok) return; state = pass.state;
     }
     expect(state.stack).toHaveLength(0);
-    expect(state.effects.some(effect => effect.handler === 'power-modifier' && effect.data !== null)).toBe(true);
+    expect(state.effects.some(effect => effect.kind === 'power-modifier' && effect.amount > 0)).toBe(true);
     expect(effectivePower(state, target.object, context)).toBe(4000);
   });
 });

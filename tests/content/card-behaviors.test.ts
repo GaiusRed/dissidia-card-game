@@ -14,6 +14,7 @@ import { script as nightRegentScript } from '../../src/content/cards/opus-ph/P-0
 import { script as quartermasterScript } from '../../src/content/cards/opus-ph/P-011R';
 import { resumeChoice, runScheduler } from '../../src/rules/scheduler';
 import { replacementDamage } from '../../src/rules/damage';
+import { moveCard } from '../../src/rules/zones';
 import type { EngineContext, MatchState, Seat } from '../../src/rules/types';
 import { fixture, context } from '../support/harness';
 
@@ -54,9 +55,13 @@ describe('typed EX Burst card behavior', () => {
     expect(answer(state, engine, ['use']).error).toBeNull();
     expect(state.choice?.kind).toBe('targets');
     expect(state.choice?.options.map(option => option.object)).toContain(target);
-    expect(answer(state, engine, [target]).error).toBeNull();
-    const forward = Object.values(state.cards).find(card => card.object === target)!;
-    expect(forward.damage).toBe(4000);
+    const resolved = answer(state, engine, [target]);
+    expect(resolved.error).toBeNull();
+    const forward = Object.values(state.cards).find(card => card.card === 'P-005R')!;
+    expect(forward.zone).toBe('break');
+    expect(resolved.events).toContainEqual(expect.objectContaining({
+      type: 'forward.damaged', data: expect.objectContaining({ target, amount: 4000 }),
+    }));
     expect(state.execution.frames).toHaveLength(0);
   });
 
@@ -184,6 +189,9 @@ describe('typed departure triggers', () => {
     const ability = cinderWitnessScript.abilities[0]!;
     const moved = { id: 'moved', type: 'card.moved', data: { type: 'Forward', from: 'field', to: 'break', controller: 0 } };
     expect(ability.triggers[0]!.matches(h.state, moved, source)).toBe(true);
+    expect(ability.triggers[0]!.matches(h.state, { ...moved, data: { ...moved.data, to: 'hand' } }, source)).toBe(false);
+    expect(ability.triggers[0]!.matches(h.state, { ...moved, data: { ...moved.data, controller: 1 } }, source)).toBe(false);
+    expect(ability.triggers[0]!.matches(h.state, { ...moved, data: { ...moved.data, type: 'Backup' } }, source)).toBe(false);
     const target = h.object(0, 'P-005R');
     const resume = { script: 'P-014R', version: '1', ability: ability.id, step: 'resolve', payload: null };
     const output = createRegistry([cinderWitnessScript], 'cinder-witness-test').resume(resume).run({ state: h.state,
@@ -199,6 +207,10 @@ describe('typed departure triggers', () => {
     const ability = tideWitnessScript.abilities[0]!;
     const event = { id: 'leave', type: 'card.moved', data: { type: 'Forward', from: 'field', to: 'hand', controller: 1 } };
     expect(ability.triggers[0]!.matches(h.state, event, source)).toBe(true);
+    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, to: 'break' } }, source)).toBe(true);
+    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, from: 'hand' } }, source)).toBe(false);
+    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, controller: 0 } }, source)).toBe(false);
+    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, type: 'Backup' } }, source)).toBe(false);
     const resume = { script: 'P-033R', version: '1', ability: ability.id, step: 'resolve', payload: null };
     const registry = createRegistry([tideWitnessScript], 'tide-witness-test');
     const frame = { id: 'leave', resume, mode: 'stack' as const, controller: 1 as const, source: source.object,
@@ -273,6 +285,9 @@ describe('typed last-known power trigger', () => {
     const event = { id: 'night-regent-left', type: 'card.moved', data: { object: source.object, card: source.card,
       type: 'Forward', from: 'field', to: 'break', controller: 1, power: 8000 } };
     expect(ability.triggers[0]!.matches(h.state, event, source)).toBe(true);
+    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, object: h.object(1, 'P-026R') } }, source)).toBe(false);
+    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, to: 'hand' } }, source)).toBe(false);
+    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, power: 6000 } }, source)).toBe(true);
     const resume = { script: 'P-027H', version: '1', ability: ability.id, step: 'resolve', payload: 8000 };
     const output = createRegistry([nightRegentScript], 'night-regent-test').resume(resume).run({ state: h.state,
       catalog: context.catalog, answer: null, frame: { id: 'leave', resume, mode: 'stack', controller: 1, source: source.object,
@@ -297,6 +312,26 @@ describe('typed Quartermaster search', () => {
     expect(h.state.choice?.options.map(option => option.object)).toContain(chosen);
     expect(answer(h.state, engine, [chosen]).error).toBeNull();
     expect(Object.values(h.state.cards).find(card => card.card === 'P-005R')?.zone).toBe('hand');
+    expect(h.state.execution.frames).toHaveLength(0);
+  });
+
+  it('allows Quartermaster to fail the search when no Soldier remains in the deck', () => {
+    const h = fixture({ placements: [{ seat: 0, card: 'P-011R', zone: 'field' }] });
+    for (const instance of [...h.state.zones[0].deck]) {
+      const number = h.state.cards[instance]!.card;
+      if (context.catalog[number]?.jobs.includes('Soldier')) moveCard(h.state, instance, 'break');
+    }
+    const deckBefore = [...h.state.zones[0].deck];
+    const source = Object.values(h.state.cards).find(card => card.card === 'P-011R')!;
+    const resume = { script: 'P-011R', version: '1', ability: 'quartermaster-enter', step: 'resolve', payload: null };
+    h.state.execution.frames.push({ id: 'quartermaster-no-soldier', resume, mode: 'stack', controller: 0, source: source.object,
+      lastKnown: { ...source }, targets: [], selectedMode: null, remaining: [], returnWindow: { kind: 'priority', seat: 0 },
+      operationIndex: 0, scriptComplete: false });
+    const engine = { ...context, registry: createRegistry([quartermasterScript], 'quartermaster-empty-search') } as EngineContext;
+    expect(runScheduler(h.state, engine).error).toBeNull();
+    expect(h.state.choice?.options.map(option => option.id)).toEqual(['skip']);
+    expect(answer(h.state, engine, ['skip']).error).toBeNull();
+    expect(h.state.zones[0].deck).toEqual(deckBefore);
     expect(h.state.execution.frames).toHaveLength(0);
   });
 });

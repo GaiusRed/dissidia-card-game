@@ -1,9 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
-import { setPowerSummon } from '../../shared/summon-effects';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
-
-export const abilityHandlers = { 'shape-tide': setPowerSummon };
 
 export const card: CardDefinition = {
   "number": "P-038R",
@@ -25,7 +22,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "shape-tide",
   "summonTarget": { "min": 1, "max": 1, "zones": ["field"], "types": ["Forward"], "controller": "any", "dull": null },
   "ex": false,
   "text": "Choose 1 Forward. Its power becomes 4000 until the end of the turn."

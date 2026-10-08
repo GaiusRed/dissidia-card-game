@@ -64,6 +64,38 @@ describe('serialized host lifecycle', () => {
     expect(await pending).toMatchObject({ ok: false, error: { code: 'STALE_MATCH' } });
   });
 
+  it('rejects a command queued while a replacement import is blocked on storage', async () => {
+    const incoming = new LocalHost();
+    incoming.start(4137);
+    await incoming.waitForSave();
+    const serialized = await incoming.exportSave();
+
+    const host = new LocalHost();
+    host.start(4137);
+    await host.waitForSave();
+    const originalWrite = storage.saveRecord;
+    let release!: () => void;
+    let markStarted!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    vi.spyOn(storage, 'saveRecord').mockImplementation(async record => {
+      markStarted();
+      await blocked;
+      await originalWrite(record);
+    });
+
+    const replacement = host.importSave(serialized);
+    await started;
+    const old = host.getState();
+    const stale = host.submit({ id: 'same-sequence-command-during-import', expectedSeq: old.seq,
+      seat: old.active, intent: { kind: 'concede' } });
+    release();
+
+    expect(await replacement).toEqual({ imported: true, reason: null });
+    expect(await stale).toMatchObject({ ok: false, error: { code: 'STALE_MATCH' } });
+    expect(host.getState()).toEqual(incoming.getState());
+  });
+
   it('does not let a delayed restore replace a newer start', async () => {
     const source = new LocalHost();
     source.start(417);

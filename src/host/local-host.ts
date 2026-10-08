@@ -12,6 +12,7 @@ import { assertInvariants } from '../rules/invariants';
 import { replayTranscript } from '../storage/replay';
 import { loadScenario, scenarioCatalog } from '../scenarios/catalog';
 import type { CommandRequest, CommandTransport } from './protocol';
+import { CLIENT_BUILD_ID } from '../app-build';
 
 const context: EngineContext = productionContext;
 export class LocalHost implements CommandTransport {
@@ -26,6 +27,7 @@ export class LocalHost implements CommandTransport {
   private commandQueue: Promise<void> = Promise.resolve();
   private saveQueue: Promise<void> = Promise.resolve();
   private abandoned = false;
+  private clientBuild = CLIENT_BUILD_ID;
   persistenceError: string | null = null;
   private readonly listeners = new Set<() => void>();
 
@@ -33,6 +35,7 @@ export class LocalHost implements CommandTransport {
     this.revision += 1;
     this.generation += 1;
     this.abandoned = false;
+    this.clientBuild = CLIENT_BUILD_ID;
     this.state = createMatch({ seed, decks, format: mvpFormat }, context);
     this.origin = JSON.parse(JSON.stringify(this.state)) as MatchState;
     this.originDescriptor = { kind: 'normal', seed, decks: JSON.parse(JSON.stringify(decks)) as [DeckList, DeckList] };
@@ -47,6 +50,7 @@ export class LocalHost implements CommandTransport {
     this.revision += 1;
     this.generation += 1;
     this.abandoned = false;
+    this.clientBuild = CLIENT_BUILD_ID;
     this.state = loadScenario(id, context);
     this.origin = JSON.parse(JSON.stringify(this.state)) as MatchState;
     const scenario = scenarioCatalog.find(item => item.id === id);
@@ -143,6 +147,7 @@ export class LocalHost implements CommandTransport {
       const replayed = replayTranscript(rebuiltOrigin, save, context, save.receipts);
       if (this.revision !== startRevision) return { restored: false, reason: null };
       this.state = save.state;
+      this.clientBuild = save.clientBuild ?? CLIENT_BUILD_ID;
       this.origin = save.origin;
       this.originDescriptor = save.originDescriptor;
       this.eventLog = replayed.events;
@@ -152,6 +157,8 @@ export class LocalHost implements CommandTransport {
       this.generation += 1;
       this.persistenceError = null;
       this.publish();
+      // Rewrite legacy-compatible saves with this build's persistent client pin.
+      if (!save.clientBuild) void this.persist();
       return { restored: true, reason: null };
     } catch (error) {
       this.persistenceError = error instanceof Error ? error.message : 'Local save storage is unavailable.';
@@ -163,7 +170,7 @@ export class LocalHost implements CommandTransport {
     await this.commandQueue;
     await this.saveQueue;
     const state = this.getState();
-    const save = createSave(state, this.transcript, this.origin ?? state, this.originDescriptor, this.savedReceipts());
+    const save = createSave(state, this.transcript, this.origin ?? state, this.originDescriptor, this.savedReceipts(), this.clientBuild);
     return JSON.stringify(save, null, 2);
   }
   async exportStoredRecord(): Promise<string | null> {
@@ -202,6 +209,7 @@ export class LocalHost implements CommandTransport {
       this.revision += 1;
       this.generation += 1;
       this.state = parsed.state;
+      this.clientBuild = parsed.clientBuild ?? CLIENT_BUILD_ID;
       this.origin = parsed.origin;
       this.originDescriptor = parsed.originDescriptor;
       this.eventLog = replayed.events;
@@ -241,7 +249,7 @@ export class LocalHost implements CommandTransport {
   }
   private persist(): Promise<void> {
     if (!this.state) return Promise.resolve();
-    const save = createSave(this.state, this.transcript, this.origin ?? this.state, this.originDescriptor, this.savedReceipts());
+    const save = createSave(this.state, this.transcript, this.origin ?? this.state, this.originDescriptor, this.savedReceipts(), this.clientBuild);
     return this.enqueueSave(save).catch(() => undefined);
   }
   private savedReceipts(): MatchSave['receipts'] {

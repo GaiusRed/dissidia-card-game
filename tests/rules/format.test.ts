@@ -35,7 +35,7 @@ describe('Commander Duel deck validation', () => {
     expect(validateDeck(wrongRarity, mvpFormat, opusPh).map(e => e.code)).toContain('INVALID_COMMANDER');
   });
   it('accepts exactly 49 distinct custom cards but rejects 48 and 50 in the production profile', () => {
-    const commander: CardDefinition = { number: '0-001L', name: 'Leader', set: 'opus-zero', provenance: 'custom', version: 'test-v1', rarity: 'L', type: 'Forward', elements: ['Fire'], cost: 3, power: 7000, jobs: [], categories: [], generic: false, keywords: [], abilities: [], text: '', summonHandler: null, ex: false };
+    const commander: CardDefinition = { number: '0-001L', name: 'Leader', set: 'opus-zero', provenance: 'custom', version: 'test-v1', rarity: 'L', type: 'Forward', elements: ['Fire'], cost: 3, power: 7000, jobs: [], categories: [], generic: false, keywords: [], abilities: [], text: '', ex: false };
     const entries: CardDefinition[] = Array.from({ length: 50 }, (_, index) => ({ ...commander, number: '0-' + String(index + 2).padStart(3, '0') + 'C', name: 'Card ' + index, rarity: 'C', type: 'Summon', power: null }));
     const catalog: Catalog = Object.fromEntries([commander, ...entries].map(card => [card.number, card]));
     const deckOf = (count: number): DeckList => ({ commander: commander.number, main: entries.slice(0, count).map(card => card.number) });

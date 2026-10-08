@@ -57,7 +57,12 @@ export function castSummon(state: MatchState, seat: Seat, source: ObjectId, targ
   const card = Object.values(state.cards).find(item => item.object === source);
   if (!card) return [error('UNKNOWN_SOURCE', 'That card has changed zones.')];
   const definition = context.catalog[card.card];
-  if (!definition || definition.type !== 'Summon' || !definition.summonHandler) return [error('NOT_A_SUMMON', 'This card cannot be cast as a Summon.')];
+  if (!definition || definition.type !== 'Summon') return [error('NOT_A_SUMMON', 'This card cannot be cast as a Summon.')];
+  const registered = context.registry.manifest.cards.find(item => item.number === definition.number);
+  const typedSummon = context.registry.card(definition.number).abilities.find(ability => ability.kind === 'summon');
+  if (!registered || !typedSummon) {
+    return [error('UNSUPPORTED_SUMMON', 'This Summon has no registered resolver.')];
+  }
   if (card.zone !== 'hand' || card.owner !== seat) return [error('ILLEGAL_SOURCE_ZONE', 'A Summon must be cast from your hand.')];
   if (state.result || state.choice || state.priority !== seat || state.phase === 'setup' || state.phase === 'active' || state.phase === 'draw' || state.phase === 'end') {
     return [error('WRONG_TIMING', 'Cast a Summon when you have priority in a player timing window.')];
@@ -80,14 +85,11 @@ export function castSummon(state: MatchState, seat: Seat, source: ObjectId, targ
   if (paymentErrors.length) return paymentErrors;
   commitPayment(state, seat, source, payment, costSpec, context);
   const lastKnown = moveCard(state, card.instance, 'stack');
-  const registered = context.registry?.manifest.cards.find(item => item.number === definition.number);
-  const typedSummon = registered && context.registry
-    ? context.registry.card(definition.number).abilities.find(ability => ability.kind === 'summon') : undefined;
-  const resume = registered && typedSummon ? {
+  const resume = {
     script: definition.number, version: registered.behaviorVersion, ability: typedSummon.id, step: 'resolve', payload: null,
-  } : undefined;
+  };
   state.stack.push({ id: `stack-${state.nextId++}`, controller: seat, source: state.cards[card.instance]!.object,
-    lastKnown, handler: definition.summonHandler, targets: [...targets], mode, data: null, ...(resume ? { resume } : {}) });
+    lastKnown, targets: [...targets], mode, data: null, resume });
   state.passes = 0;
   state.priority = seat;
   return [];

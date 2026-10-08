@@ -10,5 +10,8 @@ export function registerOffline(onStatus: (status: OfflineStatus) => void): () =
     onNeedRefresh: () => onStatus('update'),
     onRegisterError: () => onStatus('error'),
   });
+  void navigator.serviceWorker.ready.then(registration => {
+    if (registration.waiting) onStatus('update');
+  }).catch(() => onStatus('error'));
   return () => update();
 }

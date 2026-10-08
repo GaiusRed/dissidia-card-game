@@ -12,6 +12,171 @@ function pass(state: ReturnType<typeof fixture>['state'], seat: 0 | 1) {
   return applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, context);
 }
 describe('placeholder Summon effects', () => {
+  it('Scorch deals 4000 damage through the production reducer outside EX resolution', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-015C', zone: 'hand' }, { seat: 0, card: 'P-003C', zone: 'hand' },
+      { seat: 1, card: 'P-026R', zone: 'field' },
+    ] });
+    let state = h.state;
+    const summon = Object.values(state.cards).find(card => card.card === 'P-015C')!;
+    const payment = Object.values(state.cards).find(card => card.card === 'P-003C')!;
+    const target = Object.values(state.cards).find(card => card.card === 'P-026R')!;
+    const castResult = cast(state, 0, summon.object, [target.object], {
+      discard: [payment.object], dullBackups: [], specialDiscard: null, dullSource: false, sacrificeSource: false,
+      sourceElements: { [payment.object]: 'Fire' }, spend: { Fire: 1 },
+    });
+    expect(castResult.ok).toBe(true);
+    if (!castResult.ok) return;
+    state = castResult.state;
+    for (const seat of [0, 1] as const) {
+      const next = pass(state, seat);
+      expect(next.ok).toBe(true);
+      if (!next.ok) return;
+      state = next.state;
+    }
+    expect(state.cards[target.instance]!.damage).toBe(4000);
+    expect(state.cards[summon.instance]!.zone).toBe('break');
+  });
+
+  it('Stillwater cancels a resolving Summon on the stack before its effect happens', () => {
+    const h = fixture({ active: 0, priority: 0, placements: [
+      { seat: 0, card: 'P-017R', zone: 'hand' }, { seat: 0, card: 'P-009C', zone: 'field' },
+      { seat: 0, card: 'P-005R', zone: 'field' },
+      { seat: 1, card: 'P-036R', zone: 'hand' }, { seat: 1, card: 'P-029C', zone: 'field' },
+      { seat: 1, card: 'P-032R', zone: 'field' }, { seat: 1, card: 'P-026R', zone: 'field' },
+    ] });
+    let state = h.state;
+    const warCry = Object.values(state.cards).find(card => card.card === 'P-017R')!;
+    const stillwater = Object.values(state.cards).find(card => card.card === 'P-036R')!;
+    const fireBackup = Object.values(state.cards).find(card => card.card === 'P-009C')!;
+    const firstWaterBackup = Object.values(state.cards).find(card => card.card === 'P-029C')!;
+    const secondWaterBackup = Object.values(state.cards).find(card => card.card === 'P-032R')!;
+    const forward = Object.values(state.cards).find(card => card.card === 'P-026R')!;
+    const originalPower = effectivePower(state, forward.object, context);
+    const playedWarCry = cast(state, 0, warCry.object, [forward.object], {
+      discard: [], dullBackups: [fireBackup.object], specialDiscard: null, dullSource: false, sacrificeSource: false,
+      sourceElements: { [fireBackup.object]: 'Fire' }, spend: { Fire: 1 },
+    });
+    if (!playedWarCry.ok) throw new Error(playedWarCry.error.message);
+    state = playedWarCry.state;
+    const passToOpponent = pass(state, 0);
+    if (!passToOpponent.ok) throw new Error(passToOpponent.error.message);
+    state = passToOpponent.state;
+    const warCryStackSource = state.cards[warCry.instance]!.object;
+    const response = cast(state, 1, stillwater.object, [warCryStackSource], {
+      discard: [], dullBackups: [firstWaterBackup.object, secondWaterBackup.object], specialDiscard: null,
+      dullSource: false, sacrificeSource: false,
+      sourceElements: { [firstWaterBackup.object]: 'Water', [secondWaterBackup.object]: 'Water' }, spend: { Water: 2 },
+    });
+    if (!response.ok) throw new Error(response.error.message);
+    state = response.state;
+    for (let index = 0; index < 6 && state.stack.some(item => item.source === warCryStackSource); index += 1) {
+      const next = pass(state, state.priority!);
+      if (!next.ok) throw new Error(next.error.message);
+      state = next.state;
+    }
+
+    expect(state.stack.some(item => item.source === warCryStackSource)).toBe(false);
+    expect(state.cards[forward.instance]!.damage).toBe(0);
+    expect(effectivePower(state, forward.object, context)).toBe(originalPower);
+    expect(state.cards[stillwater.instance]!.zone).toBe('break');
+  });
+
+  it('Stillwater rejects a non-stack target without spending its response costs', () => {
+    const h = fixture({ active: 0, priority: 0, placements: [
+      { seat: 0, card: 'P-017R', zone: 'hand' }, { seat: 0, card: 'P-009C', zone: 'field' },
+      { seat: 0, card: 'P-005R', zone: 'field' },
+      { seat: 1, card: 'P-036R', zone: 'hand' }, { seat: 1, card: 'P-029C', zone: 'field' },
+      { seat: 1, card: 'P-032R', zone: 'field' }, { seat: 1, card: 'P-026R', zone: 'field' },
+    ] });
+    let state = h.state;
+    const warCry = Object.values(state.cards).find(card => card.card === 'P-017R')!;
+    const stillwater = Object.values(state.cards).find(card => card.card === 'P-036R')!;
+    const fireBackup = Object.values(state.cards).find(card => card.card === 'P-009C')!;
+    const firstWaterBackup = Object.values(state.cards).find(card => card.card === 'P-029C')!;
+    const secondWaterBackup = Object.values(state.cards).find(card => card.card === 'P-032R')!;
+    const forward = Object.values(state.cards).find(card => card.card === 'P-026R')!;
+    const playedWarCry = cast(state, 0, warCry.object, [forward.object], {
+      discard: [], dullBackups: [fireBackup.object], specialDiscard: null, dullSource: false, sacrificeSource: false,
+      sourceElements: { [fireBackup.object]: 'Fire' }, spend: { Fire: 1 },
+    });
+    if (!playedWarCry.ok) throw new Error(playedWarCry.error.message);
+    state = playedWarCry.state;
+    const passed = pass(state, 0);
+    if (!passed.ok) throw new Error(passed.error.message);
+    state = passed.state;
+    const before = JSON.stringify(state);
+
+    const rejected = cast(state, 1, stillwater.object, [forward.object], {
+      discard: [], dullBackups: [firstWaterBackup.object, secondWaterBackup.object], specialDiscard: null,
+      dullSource: false, sacrificeSource: false,
+      sourceElements: { [firstWaterBackup.object]: 'Water', [secondWaterBackup.object]: 'Water' }, spend: { Water: 2 },
+    });
+
+    expect(rejected.ok).toBe(false);
+    expect(JSON.stringify(state)).toBe(before);
+    expect(state.cards[firstWaterBackup.instance]!.dull).toBe(false);
+    expect(state.cards[secondWaterBackup.instance]!.dull).toBe(false);
+    expect(state.cards[stillwater.instance]!.zone).toBe('hand');
+  });
+
+  it('Twin Embers applies both 3000 damage operations from one resolution batch', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-016R', zone: 'hand' }, { seat: 0, card: 'P-003C', zone: 'hand' },
+      { seat: 0, card: 'P-005R', zone: 'field' }, { seat: 0, card: 'P-006R', zone: 'field' },
+    ] });
+    let state = h.state;
+    const summon = Object.values(state.cards).find(card => card.card === 'P-016R')!;
+    const discard = Object.values(state.cards).find(card => card.card === 'P-003C')!;
+    const first = Object.values(state.cards).find(card => card.card === 'P-005R')!;
+    const second = Object.values(state.cards).find(card => card.card === 'P-006R')!;
+    const reply = cast(state, 0, summon.object, [first.object, second.object], { discard: [discard.object], dullBackups: [],
+      specialDiscard: null, dullSource: false, sacrificeSource: false,
+      sourceElements: { [discard.object]: 'Fire' }, spend: { Fire: 2 } });
+    if (!reply.ok) throw new Error(reply.error.message);
+    state = reply.state;
+    for (const seat of [0, 1] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    expect(state.cards[first.instance]?.damage).toBe(3000);
+    expect(state.cards[second.instance]?.damage).toBe(3000);
+  });
+
+  it('Guarding Current grants power and First Strike through the reducer', () => {
+    const h = fixture({ active: 1, priority: 1, placements: [
+      { seat: 1, card: 'P-037R', zone: 'hand' }, { seat: 1, card: 'P-029C', zone: 'field' },
+      { seat: 0, card: 'P-001L', zone: 'field' },
+    ] });
+    let state = h.state;
+    const summon = Object.values(state.cards).find(card => card.card === 'P-037R')!;
+    const backup = Object.values(state.cards).find(card => card.card === 'P-029C')!;
+    const target = Object.values(state.cards).find(card => card.card === 'P-001L')!;
+    const reply = cast(state, 1, summon.object, [target.object], { discard: [], dullBackups: [backup.object],
+      specialDiscard: null, dullSource: false, sacrificeSource: false,
+      sourceElements: { [backup.object]: 'Water' }, spend: { Water: 1 } });
+    if (!reply.ok) throw new Error(reply.error.message);
+    state = reply.state;
+    for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    expect(effectivePower(state, target.object, context)).toBe(9000);
+    expect(hasKeyword(state, target.object, 'First Strike', context)).toBe(true);
+  });
+
+  it('Shape Tide sets the chosen Forward power to 4000 through the reducer', () => {
+    const h = fixture({ active: 1, priority: 1, placements: [
+      { seat: 1, card: 'P-038R', zone: 'hand' }, { seat: 1, card: 'P-024C', zone: 'hand' },
+      { seat: 1, card: 'P-029C', zone: 'field' }, { seat: 0, card: 'P-001L', zone: 'field' },
+    ] });
+    let state = h.state;
+    const summon = Object.values(state.cards).find(card => card.card === 'P-038R')!;
+    const discard = Object.values(state.cards).find(card => card.card === 'P-024C')!;
+    const target = Object.values(state.cards).find(card => card.card === 'P-001L')!;
+    const reply = cast(state, 1, summon.object, [target.object], { discard: [discard.object], dullBackups: [],
+      specialDiscard: null, dullSource: false, sacrificeSource: false,
+      sourceElements: { [discard.object]: 'Water' }, spend: { Water: 2 } });
+    if (!reply.ok) throw new Error(reply.error.message);
+    state = reply.state;
+    for (const seat of [1, 0] as const) { const next = pass(state, seat); if (!next.ok) throw new Error(next.error.message); state = next.state; }
+    expect(effectivePower(state, target.object, context)).toBe(4000);
+  });
+
   it('grants War Cry power and Brave until end of turn', () => {
     const h = fixture({ placements: [
       { seat: 0, card: 'P-017R', zone: 'hand' }, { seat: 0, card: 'P-009C', zone: 'field' },

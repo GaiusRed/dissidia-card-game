@@ -25,7 +25,6 @@ export const card: CardDefinition = {
     "Haste"
   ],
   "abilities": [],
-  "summonHandler": null,
   "ex": false,
   "text": "Haste."
 };

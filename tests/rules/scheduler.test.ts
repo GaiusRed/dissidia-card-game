@@ -42,10 +42,12 @@ describe('execution scheduler', () => {
   it('keeps priority closed while a required choice remains open', () => {
     let state = fixture({}).state;
     state.priority = 0;
+    const resume: ResumeRef = { script: 'rules', version: '5', ability: 'choice-trigger', step: 'target', payload: { item: 'stack-test' } };
+    state.execution.frames.push(frameFor(state, resume));
     state.choice = {
       id: 'choice-open', seat: 1, kind: 'confirm', reason: 'Choose.',
       options: [{ id: 'yes', label: 'Yes', object: null }], min: 1, max: 1, allocation: null,
-      resume: { handler: 'test', step: 'resolve', data: null },
+      resume,
     };
     const result = runScheduler(state, context);
     expect(result.error).toBeNull();

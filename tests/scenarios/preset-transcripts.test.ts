@@ -4,7 +4,7 @@ import { replaySave } from '../../src/storage/replay';
 import { applyCommand } from '../../src/rules/engine';
 import { loadScenario } from '../../src/scenarios/catalog';
 import { moveCard } from '../../src/rules/zones';
-import { context } from '../support/harness';
+import { context, fixture } from '../support/harness';
 import type { Command, MatchState, Seat } from '../../src/rules/types';
 
 function record(state: MatchState, seat: Seat, intent: Command['intent']): Command {
@@ -49,6 +49,29 @@ function passWindow(state: MatchState, transcript: Command[]): MatchState {
 }
 
 describe('advertised preset transcripts', () => {
+  it('replays a typed Summon mode selected in the cast command', () => {
+    const origin = fixture({ placements: [
+      { seat: 0, card: 'P-020H', zone: 'hand' }, { seat: 0, card: 'P-009C', zone: 'field' },
+      { seat: 0, card: 'P-013R', zone: 'field' }, { seat: 0, card: 'P-014R', zone: 'field' },
+      { seat: 1, card: 'P-026R', zone: 'field' },
+    ] }).state;
+    const summon = origin.zones[0].hand.map(instance => origin.cards[instance]!).find(card => card.card === 'P-020H')!;
+    const backups = origin.field.map(instance => origin.cards[instance]!).filter(card =>
+      card.controller === 0 && context.catalog[card.card]!.type === 'Backup');
+    const target = origin.field.map(instance => origin.cards[instance]!).find(card => card.card === 'P-026R')!;
+    const transcript: Command[] = [];
+    let state = origin;
+    const cast = record(state, 0, { kind: 'cast', source: summon.object, targets: [target.object], mode: 'forward',
+      payment: { discard: [], dullBackups: backups.map(card => card.object), specialDiscard: null,
+        dullSource: false, sacrificeSource: false,
+        sourceElements: Object.fromEntries(backups.map(card => [card.object, 'Fire'])), spend: { Fire: 3 } } });
+    transcript.push(cast);
+    state = send(state, cast);
+    state = passPair(state, transcript);
+    expect(state.cards[target.instance]?.zone).toBe('removed');
+    expect(replaySave(origin, createSave(state, transcript, origin), context)).toEqual(state);
+  });
+
   it('pays the third Commander cast with seven exact Fire CP and replays the transcript', () => {
     const origin = loadScenario('commander-third-cast', context);
     const commander = origin.cards[origin.commanders[0].instance]!;

@@ -7,7 +7,7 @@ export function assertInvariants(state: MatchState, context: EngineContext): voi
   for (const resume of [
     ...state.execution.frames.map(frame => frame.resume),
     ...state.execution.delayed.map(delayed => delayed.resume),
-    ...state.stack.flatMap(item => item.resume ? [item.resume] : []),
+    ...state.stack.map(item => item.resume),
   ]) {
     let step;
     try { step = resolveStep(resume, context); }
@@ -34,14 +34,12 @@ export function assertInvariants(state: MatchState, context: EngineContext): voi
       if (state.choice.options.some(option => option.object !== null && !knownObjects.has(option.object))) {
         throw new Error('A required choice cannot reference an unknown card object');
       }
-      if ('script' in state.choice.resume) {
-        const frame = state.execution.frames.at(-1);
-        const choiceResume = state.choice.resume;
-        if (!frame || frame.resume.script !== choiceResume.script || frame.resume.version !== choiceResume.version ||
-            frame.resume.ability !== choiceResume.ability || frame.resume.step !== choiceResume.step ||
-            JSON.stringify(frame.resume.payload) !== JSON.stringify(choiceResume.payload)) {
-          throw new Error('A typed choice must match the active execution frame');
-        }
+      const frame = state.execution.frames.at(-1);
+      const choiceResume = state.choice.resume;
+      if (!frame || frame.resume.script !== choiceResume.script || frame.resume.version !== choiceResume.version ||
+          frame.resume.ability !== choiceResume.ability || frame.resume.step !== choiceResume.step ||
+          JSON.stringify(frame.resume.payload) !== JSON.stringify(choiceResume.payload)) {
+        throw new Error('A required choice must match the active execution frame');
       }
     } else if (state.priority !== 0 && state.priority !== 1) {
       throw new Error('A live match must have a priority actor or a required choice');

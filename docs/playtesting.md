@@ -12,7 +12,14 @@ npm run check:boundaries
 npm test
 npm run build
 npm run test:e2e
+npm run test:ui-design
+npm run test:release
+npm run check:coverage
 ```
+
+The UI design command runs the desktop acceptance matrix at 1280×720 and 1920×1080 with normal and reduced motion. GitHub Actions runs it on every push and pull request, and retains Playwright reports and traces for review.
+
+Run `npm run test:release` to test update safety across two production builds. It covers an active mulligan, a card-driven Commander destination choice recovered and completed offline, and a completed match. Finish or abandon an active match before installing its waiting update; after a completed match, select **Return to menu** to install the update.
 
 The Vite development server supports local matches. For offline startup, run `npm run build` and serve the `dist` directory through localhost or a static host. Open the release once while online. Wait for **Ready for offline play** before disabling the network. A new computer needs the initial release download.
 
@@ -24,15 +31,15 @@ The Vite development server supports local matches. For offline startup, run `np
 4. Each player chooses **Keep** or redraws once. A redraw asks for the order of all five cards going to the bottom of the deck.
 5. Use the priority button during each decision window. Passing priority and advancing the turn are separate steps.
 
-Use **Focused playtest scenario** to launch one of the six prepared positions for Commander tax, multiple EX Bursts, control limits, End Phase triggers, party/First Strike combat, or Commander destinations. Each scenario starts a separate match origin and saves like a normal duel.
+Use **Focused playtest scenario** to launch one of the sixteen registered positions for Commander tax, multiple EX Bursts, control limits, End Phase triggers, party/First Strike combat, Commander destinations, or unavailable cast payment. Each scenario starts a separate match origin and saves like a normal duel.
 
 The local host controls both seats. The seat that owns the open choice or priority appears at the bottom for that action. **Inspect Player** changes the viewed seat without changing decision ownership.
 
 ## Play cards and make choices
 
-- The bottom of the screen shows a fan of hand cards. A gold border marks cards with an available cast payment.
+- The bottom of the screen shows a fan of hand cards. A gold border marks cards with an available cast payment. An unaffordable card stays inspectable, but its cast button is disabled and shows the current blocker.
 - Click a playable card, inspect it in the lower-left panel, then choose **Cast**. Drag a card onto the battlefield to use the same cast path.
-- The engine selects matching CP sources automatically. A Backup generates one CP when dulled. Discarding a card generates two CP; unused CP expires. The current interface does not yet let the player choose among multiple valid payment combinations.
+- The payment panel suggests matching CP sources. You can change the Backup and discard sources before you confirm. A Backup generates one CP when dulled. Discarding a card generates two CP; unused CP expires.
 - Click a target on the battlefield after selecting a targeted Summon or supported ability. The source-to-target arrow shows the draft. **Cancel** clears it without submitting a command.
 - The Commander stays in its own Commander Zone tray. Casts from that zone cost two extra CP for each earlier successful Commander Zone cast. When a Commander leaves the field through a supported effect, its owner chooses its destination.
 - The contextual choice panel appears at the bottom left. Confirm mandatory choices there. The panel cannot be dismissed by Escape.
@@ -46,6 +53,6 @@ Use **Export save** to download a JSON diagnostic file. Use **Import** to restor
 
 ## Scope and known gaps
 
-The card set is synthetic. It represents rules interactions and does not reproduce official FFTCG cards. The rules engine and table are not complete yet. The current build does not support every placeholder ability, Summon, trigger, EX Burst, choice, effect layer, or combat allocation rule. Check [the coverage table](rules-coverage.md) before a playtest and record any manual workaround. Engine version 2 changes EX Burst and End Phase timing; older saves require export for reference and cannot resume in this version.
+The card set is synthetic. It represents rules interactions and does not reproduce official FFTCG cards. The rules engine and table are not complete yet. The current build does not support every placeholder ability, Summon, trigger, EX Burst, choice, effect layer, or combat allocation rule. Check [the coverage table](rules-coverage.md) before a playtest and record any manual workaround. Current save compatibility pins are schema 9, engine 15, and rule-script 5; older saves require export for reference and cannot resume in this version.
 
 Pets, board cosmetics, card collections, pack opening, matchmaking, and online accounts are outside this MVP.

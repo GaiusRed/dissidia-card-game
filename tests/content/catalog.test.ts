@@ -132,7 +132,7 @@ describe('Opus Placeholder content', () => {
     const commander: CardDefinition = {
       number: '0-001L', name: 'Test Commander', set: 'opus-zero', provenance: 'custom',
       version: 'opus-zero-test-v1', rarity: 'L', type: 'Forward', elements: ['Fire'], cost: 3, power: 7000,
-      jobs: [], categories: ['Commander'], generic: false, keywords: [], abilities: [], text: '', summonHandler: null, ex: false,
+      jobs: [], categories: ['Commander'], generic: false, keywords: [], abilities: [], text: '', ex: false,
     };
     const mainCards = Array.from({ length: 49 }, (_, index): CardDefinition => ({
       ...commander, number: '0-' + String(index + 2).padStart(3, '0') + 'C',

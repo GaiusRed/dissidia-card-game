@@ -4,6 +4,7 @@ import { runRuleCheckpoint } from './checkpoints';
 import { applyPreparedBatch, nextCommanderReplacement, prepareBatch } from './batches';
 import { batchResume } from './batch-script';
 import './batch-script';
+import './rule-choice-scripts';
 import { resolveRuleStep, RULE_ENGINE_VERSION } from './rule-scripts';
 import { mandatoryStateKey } from './loops';
 import { legalSummonTargets } from './targets';
@@ -101,7 +102,7 @@ export function runScheduler(state: MatchState, context: EngineContext): Schedul
         if (!state.choice) runRuleCheckpoint(state, context);
         continue;
       }
-      if (!frame && !state.execution.batch && state.work.some(item => item.handler === 'damage' && item.step === 'offer-ex')) {
+      if (!frame && !state.execution.batch && state.work.some(item => item.kind === 'offer-ex')) {
         continueDamageEx(state, context);
         if (state.choice || state.execution.frames.length > 0) continue;
       }
@@ -140,6 +141,7 @@ export function runScheduler(state: MatchState, context: EngineContext): Schedul
           continue;
         }
         state.execution.frames.pop();
+        if (!state.choice) runRuleCheckpoint(state, context);
         applyReturnWindow(state, frame);
         continue;
       }
@@ -206,7 +208,6 @@ export function resumeChoice(state: MatchState, answer: Answer, context: EngineC
   if (!choice) return failure('STALE_CHOICE', 'That decision is no longer open.');
   const invalid = validateAnswer(choice, answer);
   if (invalid) return { events: [], error: invalid };
-  if (!('script' in choice.resume)) return failure('UNKNOWN_RESUME', 'The saved choice has no registered resolver.');
   const frame = state.execution.frames.at(-1);
   if (!frame) return failure('MISSING_FRAME', 'The saved choice has no execution frame.');
   if (frame.resume.script !== choice.resume.script || frame.resume.version !== choice.resume.version ||

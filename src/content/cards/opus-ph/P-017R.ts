@@ -1,9 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
-import { buffSummon } from '../../shared/summon-effects';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
-
-export const abilityHandlers = { 'war-cry': buffSummon(3000, 'Brave') };
 
 export const card: CardDefinition = {
   "number": "P-017R",
@@ -25,7 +22,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "war-cry",
   "summonTarget": { "min": 1, "max": 1, "zones": ["field"], "types": ["Forward"], "controller": "any", "dull": null },
   "ex": false,
   "text": "Choose 1 Forward. It gains 3000 power and Brave until the end of the turn."

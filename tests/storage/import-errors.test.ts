@@ -115,7 +115,7 @@ describe('save import errors', () => {
       ['rewrite a saved continuation handler and step', save => {
         for (const snapshot of [save.origin, save.state]) {
           if (!snapshot.choice) throw new Error('Expected the normal setup choice.');
-          snapshot.choice.resume = { handler: 'unknown-setup', step: 'unknown-step', data: null };
+          snapshot.choice.resume = { script: 'rules', version: '5', ability: 'unknown-setup', step: 'unknown-step', payload: null };
         }
       }],
       ['rewrite an inner version pin', save => {
@@ -125,7 +125,7 @@ describe('save import errors', () => {
         for (const snapshot of [save.origin, save.state]) {
           const commander = snapshot.cards[snapshot.commanders[0].instance]!;
           snapshot.execution.frames.push({ id: 'tampered-frame', resume: {
-            script: 'rules', version: '4', ability: 'missing', step: 'missing', payload: { forged: true },
+            script: 'rules', version: '5', ability: 'missing', step: 'missing', payload: { forged: true },
           }, mode: 'rule', controller: 0, source: commander.object, lastKnown: { ...commander }, targets: [],
           selectedMode: null, remaining: [], returnWindow: { kind: 'priority', seat: 0 }, operationIndex: 0, scriptComplete: false });
         }
@@ -183,7 +183,7 @@ describe('save import errors', () => {
     state.priority = null;
     state.choice = { id: 'invalid-bounds', seat: 0, kind: 'confirm', reason: 'test',
       options: [{ id: 'only-option', label: 'Only option', object: null }], min: 0, max: 2, allocation: null,
-      resume: { handler: 'setup', step: 'starting-player', data: null } };
+      resume: { script: 'rules', version: '5', ability: 'setup', step: 'starting-player', payload: null } };
     const save = createSave(state, []);
     for (const state of [save.origin, save.state]) {
       state.choice!.min = 0;
@@ -210,7 +210,7 @@ describe('save import errors', () => {
     state.priority = null;
     state.choice = { id: 'orphan-choice', seat: 0, kind: 'confirm', reason: 'test',
       options: [{ id: 'continue', label: 'Continue', object: null }], min: 1, max: 1, allocation: null,
-      resume: { script: 'rules', version: '4', ability: 'setup', step: 'starting-player', payload: null } };
+      resume: { script: 'rules', version: '5', ability: 'setup', step: 'starting-player', payload: null } };
     const save = createSave(state, []);
     const host = new LocalHost();
     expect(await host.importSave(JSON.stringify(save))).toMatchObject({ imported: false, reason: expect.any(String) });
@@ -220,7 +220,7 @@ describe('save import errors', () => {
     const state = fixture({}).state;
     const commander = state.cards[state.commanders[0].instance]!;
     state.execution.frames.push({ id: 'unknown-frame', resume: {
-      script: 'rules', version: '4', ability: 'missing-rule-script', step: 'resolve', payload: null,
+      script: 'rules', version: '5', ability: 'missing-rule-script', step: 'resolve', payload: null,
     }, mode: 'rule', controller: 0, source: commander.object, lastKnown: { ...commander }, targets: [], selectedMode: null,
       remaining: [], returnWindow: { kind: 'priority', seat: 0 }, operationIndex: 0, scriptComplete: false });
     const save = createSave(state, []);
@@ -233,7 +233,7 @@ describe('save import errors', () => {
     state.priority = null;
     state.choice = { id: 'unknown-target', seat: 0, kind: 'targets', reason: 'test',
       options: [{ id: 'missing-object', label: 'Missing card', object: 'missing-object' }], min: 1, max: 1, allocation: null,
-      resume: { handler: 'trigger-declaration', step: 'target', data: null } };
+      resume: { script: 'rules', version: '5', ability: 'choice-trigger', step: 'target', payload: { item: 'missing-stack' } } };
     const save = createSave(state, []);
     const host = new LocalHost();
     expect(await host.importSave(JSON.stringify(save))).toMatchObject({ imported: false, reason: expect.any(String) });

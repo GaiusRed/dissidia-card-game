@@ -1,5 +1,7 @@
 import { effectivePower } from './continuous';
 import { openTriggerOrder } from './priority';
+import { openRuleChoice } from './rule-choice';
+import { RULE_ENGINE_VERSION } from './rule-scripts';
 import type { CardObject, EngineContext, MatchState, Seat, Zone } from './types';
 
 function typedResume(context: EngineContext, card: string, ability: string, payload: import('./types').Json = null) {
@@ -33,6 +35,16 @@ export function hasLegalTriggerTarget(state: MatchState, item: import('./types')
   return targetOptions(state, item.controller, raw as unknown as import('./types').AbilityTargetRule, context).length > 0;
 }
 
+export function isTriggerTargetLegal(state: MatchState, item: import('./types').StackItem, target: string,
+  context: EngineContext): boolean {
+  const data = item.data && typeof item.data === 'object' && !Array.isArray(item.data)
+    ? item.data as Record<string, import('./types').Json> : {};
+  const raw = data.declarationTarget;
+  return !!raw && typeof raw === 'object' && !Array.isArray(raw) &&
+    targetOptions(state, item.controller, raw as unknown as import('./types').AbilityTargetRule, context)
+      .some(option => option.object === target);
+}
+
 /** Publish the next required trigger target before players receive priority. */
 export function openTriggerTargetChoice(state: MatchState, context: EngineContext): void {
   while (!state.choice) {
@@ -49,14 +61,11 @@ export function openTriggerTargetChoice(state: MatchState, context: EngineContex
       state.stack.splice(state.stack.indexOf(item), 1);
       continue;
     }
-    state.choice = {
-      id: `choice-${state.nextId++}`, seat: item.controller, kind: 'targets',
+    openRuleChoice(state, { seat: item.controller, kind: 'targets',
       reason: `${context.catalog[item.lastKnown.card]?.name ?? 'Triggered ability'}: choose a target.`,
       options, min: 1, max: 1, allocation: null,
-      resume: { handler: 'trigger-declaration', step: 'target', data: { item: item.id } },
-    };
-    state.priority = null;
-    state.passes = 0;
+      resume: { script: 'rules', version: RULE_ENGINE_VERSION, ability: 'choice-trigger', step: 'target',
+        payload: { item: item.id } } }, item.lastKnown);
   }
 }
 
@@ -66,21 +75,21 @@ export function scheduleEntryAbilities(state: MatchState, instance: string, cont
   const definition = source && context.catalog[source.card];
   if (!source || source.zone !== 'field' || !definition) return;
   const abilities = definition.abilities.filter(ability => ability.kind === 'auto' && ability.trigger === 'enter' &&
-    (context.handlers?.[ability.handler] || typedResume(context, source.card, ability.id)));
+    typedResume(context, source.card, ability.id));
   const items: import('./types').StackItem[] = [];
   for (const ability of abilities) {
     const resume = typedResume(context, source.card, ability.id);
+    if (!resume) continue;
     items.push({
       id: `stack-${state.nextId++}`, controller: source.controller, source: source.object, lastKnown: { ...source },
-      handler: ability.handler, targets: [], mode: null,
+      targets: [], mode: null,
       data: JSON.parse(JSON.stringify({ source: source.object, seat: source.controller, ability: ability.id, targets: [],
         ...(ability.target ? { declarationTarget: ability.target } : {}) })) as import('./types').Json,
-      ...(resume ? { resume } : {}),
+      resume,
     });
   }
   if (items.length > 0) {
-    if (items.length > 1) state.triggers.push({ handler: 'trigger-order', step: 'order',
-      data: JSON.parse(JSON.stringify({ seat: source.controller, items })) as import('./types').Json });
+    if (items.length > 1) state.triggers.push({ seat: source.controller, items });
     else state.stack.push(items[0]!);
     state.passes = 0;
     if (state.triggers.length > 0) openTriggerOrder(state, context);
@@ -95,14 +104,14 @@ export function scheduleEntryAbilities(state: MatchState, instance: string, cont
 export function scheduleDepartureAbilities(state: MatchState, departed: CardObject, destination: Zone, context: EngineContext,
   lastPower = 0, observers?: readonly CardObject[], deferOrdering = false): void {
   if (context.catalog[departed.card]?.type !== 'Forward') return;
-  const pending: Array<{ source: CardObject; handler: string; data: Record<string, string | number>; target?: import('./types').AbilityTargetRule }> = [];
+  const pending: Array<{ source: CardObject; ability: string; data: Record<string, string | number>; target?: import('./types').AbilityTargetRule }> = [];
   const sources = observers ?? state.field.map(instance => state.cards[instance]!).filter(Boolean);
   for (const source of sources) {
     if (source.controller !== departed.controller) continue;
     for (const ability of context.catalog[source.card]?.abilities ?? []) {
       if (ability.kind === 'auto' && ability.trigger === 'controlled-forward-leaves' &&
           (!ability.triggerDestination || ability.triggerDestination.includes(destination))) {
-        pending.push({ source, handler: ability.handler, data: { seat: source.controller },
+        pending.push({ source, ability: ability.id, data: { seat: source.controller },
           ...(ability.target ? { target: ability.target } : {}) });
       }
     }
@@ -110,42 +119,30 @@ export function scheduleDepartureAbilities(state: MatchState, departed: CardObje
   if (destination === 'break') {
     for (const ability of context.catalog[departed.card]?.abilities ?? []) {
       if (ability.kind === 'auto' && ability.trigger === 'self-break') {
-        pending.push({ source: departed, handler: ability.handler, data: { seat: departed.controller, lastPower },
+        pending.push({ source: departed, ability: ability.id, data: { seat: departed.controller, lastPower },
           ...(ability.target ? { target: ability.target } : {}) });
       }
     }
   }
   const grouped: Record<Seat, import('./types').StackItem[]> = { 0: [], 1: [] };
   for (const trigger of pending) {
-    const abilityId = Object.entries(context.catalog[trigger.source.card]?.abilities ?? {})
-      .find(([, ability]) => ability.handler === trigger.handler)?.[1]?.id;
-    const resume = abilityId ? typedResume(context, trigger.source.card, abilityId,
-      typeof trigger.data.lastPower === 'number' ? trigger.data.lastPower : null) : undefined;
-    if (!context.handlers?.[trigger.handler] && !resume) continue;
+    const resume = typedResume(context, trigger.source.card, trigger.ability,
+      typeof trigger.data.lastPower === 'number' ? trigger.data.lastPower : null);
+    if (!resume) continue;
     grouped[trigger.source.controller].push({ id: `stack-${state.nextId++}`, controller: trigger.source.controller,
-      source: trigger.source.object, lastKnown: { ...trigger.source }, handler: trigger.handler,
+      source: trigger.source.object, lastKnown: { ...trigger.source },
       targets: [], mode: null, data: JSON.parse(JSON.stringify({ source: trigger.source.object, ...trigger.data,
         targets: [], ...(trigger.target ? { declarationTarget: trigger.target } : {}) })) as import('./types').Json,
-      ...(resume ? { resume } : {}) });
+      resume });
   }
   for (const seat of [state.active, other(state.active)] as const) {
     if (grouped[seat].length === 0) continue;
-    const existing = deferOrdering ? state.triggers.find(trigger => {
-      if (trigger.handler !== 'trigger-order' || trigger.step !== 'order' || !trigger.data ||
-          typeof trigger.data !== 'object' || Array.isArray(trigger.data)) return false;
-      return (trigger.data as Record<string, import('./types').Json>).seat === seat;
-    }) : undefined;
-    if (existing && existing.data && typeof existing.data === 'object' && !Array.isArray(existing.data)) {
-      const data = existing.data as Record<string, import('./types').Json>;
-      const prior = Array.isArray(data.items) ? data.items : [];
-      existing.data = JSON.parse(JSON.stringify({ ...data, items: [...prior, ...grouped[seat]] })) as import('./types').Json;
+    const existing = deferOrdering ? state.triggers.find(trigger => trigger.seat === seat) : undefined;
+    if (existing) {
+      existing.items.push(...grouped[seat]);
     } else {
-      const trigger = { handler: 'trigger-order', step: 'order',
-        data: JSON.parse(JSON.stringify({ seat, items: grouped[seat] })) as import('./types').Json };
-      const nonactiveGroupIndex = deferOrdering ? state.triggers.findIndex(candidate => {
-        if (candidate.handler !== 'trigger-order' || !candidate.data || typeof candidate.data !== 'object' || Array.isArray(candidate.data)) return false;
-        return (candidate.data as Record<string, import('./types').Json>).seat === other(state.active);
-      }) : -1;
+      const trigger = { seat, items: grouped[seat] };
+      const nonactiveGroupIndex = deferOrdering ? state.triggers.findIndex(candidate => candidate.seat === other(state.active)) : -1;
       if (deferOrdering && seat === state.active && nonactiveGroupIndex >= 0) {
         state.triggers.splice(nonactiveGroupIndex, 0, trigger);
       } else state.triggers.push(trigger);

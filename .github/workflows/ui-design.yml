@@ -1,0 +1,33 @@
+name: UI design acceptance
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  playwright-ui-design:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run test:ui-design
+      - name: Upload UI design evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-design-playwright-${{ github.run_id }}
+          path: |
+            playwright-report/ui-design/
+            test-results/ui-design/
+            test-results/ui-design-results.json
+          if-no-files-found: warn
+          retention-days: 14

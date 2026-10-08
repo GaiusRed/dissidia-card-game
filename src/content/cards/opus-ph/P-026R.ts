@@ -25,7 +25,6 @@ export const card: CardDefinition = {
     "First Strike"
   ],
   "abilities": [],
-  "summonHandler": null,
   "ex": false,
   "text": "First Strike."
 };

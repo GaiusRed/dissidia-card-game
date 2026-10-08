@@ -52,7 +52,8 @@ describe('priority windows', () => {
       placements: [{ seat: 0, card: 'P-005R', zone: 'field' }] });
     const source = h.state.cards[h.state.commanders[0].instance]!;
     h.state.stack.push({ id: 'pending-stack', controller: 1, source: source.object, lastKnown: { ...source },
-      handler: 'test', targets: [], mode: null, data: null });
+      targets: [], mode: null, data: null,
+      resume: { script: 'P-014R', version: '1', ability: 'cinder-witness-leave', step: 'resolve', payload: null } });
     const result = applyCommand(h.state, { id: 'attack-over-stack', expectedSeq: 0, seat: 0,
       intent: { kind: 'attack', members: [h.object(0, 'P-005R')] } }, context);
     expect(result.ok).toBe(false);

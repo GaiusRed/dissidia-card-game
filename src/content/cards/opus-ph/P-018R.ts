@@ -1,9 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
-import { breakDullForwardSummon } from '../../shared/summon-effects';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
-
-export const abilityHandlers = { 'ashen-verdict': breakDullForwardSummon };
 
 export const card: CardDefinition = {
   "number": "P-018R",
@@ -25,7 +22,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "ashen-verdict",
   "summonTarget": { "min": 1, "max": 1, "zones": ["field"], "types": ["Forward"], "controller": "any", "dull": true },
   "ex": false,
   "text": "Choose 1 dull Forward. Break it."

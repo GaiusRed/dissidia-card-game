@@ -112,14 +112,16 @@ export function legalActions(state: MatchState, seat: Seat, context: EngineConte
       const definition = context.catalog[card.card]!;
       const targets = legalSummonTargets(state, seat, definition.summonTarget, null, context)
         .map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object }));
-      const modeTargetOptions = Object.fromEntries((definition.summonTarget?.modes ?? []).map(mode => [mode.id,
+      const allModeTargetOptions = Object.fromEntries((definition.summonTarget?.modes ?? []).map(mode => [mode.id,
         legalSummonTargets(state, seat, definition.summonTarget, mode.id, context)
           .map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object }))]));
+      const availableModes = (definition.summonTarget?.modes ?? []).filter(mode => (allModeTargetOptions[mode.id]?.length ?? 0) > 0);
+      const modeTargetOptions = Object.fromEntries(availableModes.map(mode => [mode.id, allModeTargetOptions[mode.id]!]));
       const count = definition.summonTarget?.min ?? 0;
       const sources = paymentOptions(state, seat, access.source, definition.elements, context);
       offers.push({ id: `cast:${access.source}`, kind: 'cast', source: access.source, label: `Cast ${definition.name}`,
         ability: null, targetOptions: targets, minTargets: count, maxTargets: definition.summonTarget?.max ?? count,
-        modes: definition.summonTarget?.modes?.map(mode => ({ id: mode.id, label: mode.label, object: null })) ?? [],
+        modes: availableModes.map(mode => ({ id: mode.id, label: mode.label, object: null })),
         modeTargetOptions, needsPayment: access.displayedCost > 0,
         payment: { cost: access.displayedCost, commanderTax: access.commanderTax, elements: definition.elements,
           ...sources,
@@ -136,9 +138,9 @@ export function legalActions(state: MatchState, seat: Seat, context: EngineConte
       for (const ability of definition.abilities) {
         if (ability.kind !== 'action' && ability.kind !== 'special') continue;
         const rule = ability.activation;
-        const typed = context.registry?.manifest.cards.some(item => item.number === source.card) && context.registry
-          ? context.registry.card(source.card).abilities.some(item => item.id === ability.id) : false;
-        if (!rule || (!typed && !context.handlers?.[ability.handler]) || (rule.dullSource && (source.dull || !isReadyForDullCost(state, source.object, context)))) continue;
+        const typed = context.registry.manifest.cards.some(item => item.number === source.card) &&
+          context.registry.card(source.card).abilities.some(item => item.id === ability.id);
+        if (!rule || !typed || (rule.dullSource && (source.dull || !isReadyForDullCost(state, source.object, context)))) continue;
         const targetCards = legalAbilityTargets(state, seat, rule.target, context);
         const specials = rule.specialDiscardName ? state.zones[seat].hand.map(id => state.cards[id]!)
           .filter(card => context.catalog[card.card]?.name === rule.specialDiscardName && card.object !== source.object) : [];

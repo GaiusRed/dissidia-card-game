@@ -5,6 +5,7 @@ export interface Placement {
   card: string;
   zone: Exclude<Zone, 'stack' | 'commander'>;
   dull?: boolean;
+  frozen?: boolean;
   damage?: number;
   controlledSinceTurn?: number;
   attackedTurn?: number;

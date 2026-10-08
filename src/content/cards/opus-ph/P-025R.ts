@@ -1,16 +1,7 @@
-import type { AbilityHandler, CardDefinition } from '../../../rules/types';
-import { chooseForward } from '../../shared/card-helpers';
-import { emit } from '../../shared/legacy';
+import type { CardDefinition } from '../../../rules/types';
 import type { CardScript } from '../../../rules/contracts/card-script';
 import { z } from 'zod';
 import { selfEntryTrigger } from '../../shared/script-helpers';
-
-const frostBinderEnter: AbilityHandler = chooseForward('Frost Binder', (context, target) => {
-  target.dull = true;
-  target.frozen = true;
-  return emit(context.state, 'forward.dulled-and-frozen', { object: target.object });
-});
-export const abilityHandlers = { 'frost-binder-enter': frostBinderEnter };
 
 export const card: CardDefinition = {
   "number": "P-025R",
@@ -37,14 +28,12 @@ export const card: CardDefinition = {
     {
       "id": "frost-binder-enter",
       "kind": "auto",
-      "handler": "frost-binder-enter",
       "text": "When Frost Binder enters the field, choose 1 Forward. Dull it and Freeze it.",
       "ex": false,
       "trigger": "enter",
       "target": { "zones": ["field"], "types": ["Forward"], "elements": [], "owner": "any", "controller": "any", "dull": null }
     }
   ],
-  "summonHandler": null,
   "ex": false,
   "text": "When Frost Binder enters the field, choose 1 Forward. Dull it and Freeze it."
 };

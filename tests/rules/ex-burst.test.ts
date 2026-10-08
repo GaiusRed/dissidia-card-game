@@ -109,17 +109,17 @@ describe('EX Burst', () => {
     expect(state.zones[1].damage).toHaveLength(3);
   });
 
-  it('checks the seven-damage rule process after the complete EX sequence', () => {
+  it('defers the exact seven-damage loss until the complete EX sequence finishes', () => {
     const h = fixture({ phase: 'attack', active: 0, priority: 0, placements: [
       { seat: 0, card: 'P-003C', zone: 'field' }, { seat: 1, card: 'P-023C', zone: 'field' },
     ], deckTop: { 1: ['P-031R', 'P-035C', 'P-024C'] } });
-    const existingDamage = h.state.zones[1].deck.slice(2, 8);
+    const existingDamage = h.state.zones[1].deck.slice(2, 7);
     for (const instance of existingDamage) moveCard(h.state, instance, 'damage');
     let state = h.state;
     dealPlayerDamage(state, 1, 2, 'two-point damage batch', context);
     continueDamageEx(state, context);
     expect(runScheduler(state, context).error).toBeNull();
-    expect(state.zones[1].damage).toHaveLength(8);
+    expect(state.zones[1].damage).toHaveLength(7);
     expect(state.result).toBeNull();
     expect(state.choice?.reason).toContain('Archive Keeper');
     state = send(state, 1, { kind: 'answer', answer: { choice: state.choice!.id, selected: ['skip'], amounts: {} } });

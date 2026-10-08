@@ -3,7 +3,7 @@ import type { ResumeStep } from './contracts/execution';
 const key = (ability: string, step: string) => `${ability}/${step}`;
 const steps = new Map<string, ResumeStep>();
 
-export const RULE_ENGINE_VERSION = '4';
+export const RULE_ENGINE_VERSION = '5';
 
 export function registerRuleStep(ability: string, step: string, resolver: ResumeStep): void {
   if (!ability.trim() || !step.trim()) throw new Error('Rule script names are required.');

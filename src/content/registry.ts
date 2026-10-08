@@ -3,6 +3,52 @@ import type { CardScript } from '../rules/contracts/card-script';
 import type { ResumeRef, ResumeStep } from '../rules/contracts/execution';
 
 const key = (card: string, ability: string, step: string) => `${card}/${ability}/${step}`;
+const sameList = (left: readonly string[], right: readonly string[]) =>
+  left.length === right.length && left.every((item, index) => item === right[index]);
+
+function assertAbilityMetadataCost(script: CardScript, ability: CardScript['abilities'][number]): void {
+  const { metadata } = script;
+  const printed = metadata.abilities.find(item => item.id === ability.id);
+  const activation = printed?.activation;
+  const expected = activation
+    ? { cp: activation.cost, elements: activation.elements, dullSource: activation.dullSource,
+        sacrificeSource: activation.sacrificeSource, sameNameDiscard: activation.specialDiscardName !== null }
+    : ability.kind === 'summon' && !ability.ex
+      ? { cp: metadata.cost, elements: metadata.elements, dullSource: false, sacrificeSource: false, sameNameDiscard: false }
+      : { cp: 0, elements: [] as readonly string[], dullSource: false, sacrificeSource: false, sameNameDiscard: false };
+  const actual = ability.cost;
+  if (actual.cp !== expected.cp || !sameList(actual.elements, expected.elements) ||
+      actual.dullSource !== expected.dullSource || actual.sacrificeSource !== expected.sacrificeSource ||
+      actual.sameNameDiscard !== expected.sameNameDiscard) {
+    throw new Error(`Cost mismatch for ${metadata.number}/${ability.id}.`);
+  }
+  if (printed && (printed.kind !== ability.kind || printed.ex !== ability.ex)) {
+    throw new Error(`Printed ability mismatch for ${metadata.number}/${ability.id}.`);
+  }
+  if (ability.ex && (actual.cp !== 0 || actual.elements.length !== 0 || actual.dullSource ||
+      actual.sacrificeSource || actual.sameNameDiscard)) {
+    throw new Error(`EX ability ${metadata.number}/${ability.id} cannot require a payment cost.`);
+  }
+}
+
+function assertSummonTargets(script: CardScript, ability: CardScript['abilities'][number]): void {
+  if (ability.kind !== 'summon') return;
+  const printed = script.metadata.summonTarget;
+  if (!printed || script.metadata.type !== 'Summon' ||
+      ability.targets.min !== printed.min || ability.targets.max !== printed.max) {
+    throw new Error(`Target mismatch for ${script.metadata.number}/${ability.id}.`);
+  }
+  const printedModes = (printed.modes ?? []).map(mode => `${mode.id}:${mode.label}`);
+  const scriptModes = ability.modes.map(mode => `${mode.id}:${mode.label}`);
+  if (!sameList(printedModes, scriptModes)) throw new Error(`Mode mismatch for ${script.metadata.number}/${ability.id}.`);
+}
+
+function assertActivationTargets(script: CardScript, ability: CardScript['abilities'][number]): void {
+  const printed = script.metadata.abilities.find(item => item.id === ability.id);
+  if (printed?.activation && (ability.targets.min !== 1 || ability.targets.max !== 1)) {
+    throw new Error(`Target mismatch for ${script.metadata.number}/${ability.id}.`);
+  }
+}
 
 export function createRegistry(scripts: readonly CardScript[], id: string): CardRegistry {
   if (!id.trim()) throw new Error('Registry ID is required.');
@@ -21,7 +67,13 @@ export function createRegistry(scripts: readonly CardScript[], id: string): Card
       if (abilityIds.has(ability.id)) throw new Error(`Duplicate ability ID ${number}/${ability.id}.`);
       abilityIds.add(ability.id);
       if (!Object.hasOwn(ability.steps, 'resolve')) throw new Error(`Missing resolve step for ${number}/${ability.id}.`);
+      assertAbilityMetadataCost(script, ability);
+      assertActivationTargets(script, ability);
+      assertSummonTargets(script, ability);
       for (const [step, handler] of Object.entries(ability.steps)) steps.set(key(number, ability.id, step), handler);
+    }
+    if (script.metadata.type === 'Summon' && script.abilities.filter(ability => ability.kind === 'summon').length !== 1) {
+      throw new Error(`Missing Summon ability for ${number}.`);
     }
     for (const ability of script.metadata.abilities) {
       if (!abilityIds.has(ability.id)) throw new Error(`Unresolved printed ability ${number}/${ability.id}.`);
@@ -68,7 +120,7 @@ export function checkRegistryCompleteness(registry: CardRegistry): string[] {
         errors.push(`${script.number}/${printed.id} has no resolving card script.`);
       }
     }
-    if (card.metadata.summonHandler && !card.abilities.some(ability => ability.kind === 'summon' && Object.hasOwn(ability.steps, 'resolve'))) {
+    if (card.metadata.type === 'Summon' && !card.abilities.some(ability => ability.kind === 'summon' && Object.hasOwn(ability.steps, 'resolve'))) {
       errors.push(`${script.number} has no resolving Summon script.`);
     }
   }

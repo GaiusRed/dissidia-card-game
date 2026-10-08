@@ -37,13 +37,16 @@ describe('local host projections', () => {
     addKeyword(h.state, source, target, 'Haste', h.state.turn);
     const departed = moveCard(h.state, sourceCard.instance, 'break');
     h.state.stack.push({ id: 'departed-trigger', controller: 0, source, lastKnown: departed,
-      handler: 'typed-trigger', targets: [target], mode: null, data: null,
-      resume: { script: 'P-014R', version: '1', ability: 'cinder-witness-break', step: 'resolve', payload: null } });
+      targets: [target], mode: null, data: null,
+      resume: { script: 'P-014R', version: '1', ability: 'cinder-witness-leave', step: 'resolve', payload: null } });
 
     const view = projectView(h.state, 1, [], context);
 
     expect(view.presentations[target]).toMatchObject({ owner: 0, controller: 1, power: 5000, keywords: ['Haste'] });
     expect(view.stack[0]).toMatchObject({ source, lastKnown: { object: source, owner: 0, zone: 'field' }, targets: [target] });
+    expect(view.stack[0]).toMatchObject({ id: 'departed-trigger', ability: 'cinder-witness-leave', controller: 0 });
+    expect(view.stack[0]).not.toHaveProperty('resume');
+    expect(view.stack[0]).not.toHaveProperty('data');
     expect(view.cards[sourceCard.instance]).toMatchObject({ object: sourceCard.object, owner: 0, zone: 'break' });
     expect(view.field).not.toContain(sourceCard.instance);
     expect(view.presentations).not.toHaveProperty(source);
@@ -77,7 +80,7 @@ describe('local host projections', () => {
     const opponentDeckOrder = [...h.state.zones[1].deck];
     h.state.choice = { id: 'private-choice', seat: 1, kind: 'cards', reason: 'Search P-031R from deck.',
       options: [{ id: secret.object, label: 'P-031R', object: secret.object }], min: 1, max: 1, allocation: null,
-      resume: { handler: 'private', step: 'choice', data: { card: 'P-031R' } } };
+      resume: { script: 'rules', version: '5', ability: 'choice-trigger', step: 'target', payload: { item: 'stack-test' } } };
     const log: RuleEvent[] = [
       { id: 'draw-secret', type: 'card.drawn', data: { seat: 1, card: 'P-031R' } },
       { id: 'draw-own', type: 'card.drawn', data: { seat: 0, card: 'P-003C' } },
@@ -103,6 +106,22 @@ describe('local host projections', () => {
     expect(publicView.castAccess).toEqual([]);
     expect(publicView.actions).toEqual([]);
     expect(publicView.log).toEqual([]);
+  });
+
+  it('preserves public damage-zone order while omitting the main-deck order', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-005R', zone: 'hand' }, { seat: 0, card: 'P-009C', zone: 'hand' },
+    ] });
+    const first = Object.values(h.state.cards).find(card => card.card === 'P-005R')!;
+    const second = Object.values(h.state.cards).find(card => card.card === 'P-009C')!;
+    moveCard(h.state, first.instance, 'damage');
+    moveCard(h.state, second.instance, 'damage');
+
+    const view = projectView(h.state, 0, [], context);
+
+    expect(view.zones[0].damage).toEqual([first.instance, second.instance]);
+    expect(view.zones[0].deck).toEqual([]);
+    expect(JSON.stringify(view)).not.toContain(h.state.zones[0].deck[0]!);
   });
 
   it('accepts only current-sequence commands and publishes accepted state changes after persistence', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { choiceAnswer, validateChoiceDraft, type ChoiceDraft } from '../../src/client/choice-draft';
+import { choiceAnswer, toggleSelection, validateChoiceDraft, type ChoiceDraft } from '../../src/client/choice-draft';
 import type { MatchView } from '../../src/host/protocol';
 
 function choice(overrides: Partial<NonNullable<MatchView['choice']>> = {}): NonNullable<MatchView['choice']> {
@@ -9,6 +9,15 @@ function choice(overrides: Partial<NonNullable<MatchView['choice']>> = {}): NonN
 }
 
 describe('local choice drafts', () => {
+  it('shares capped toggle selection while preserving deselection and order', () => {
+    expect(toggleSelection([], 'a', 2)).toEqual(['a']);
+    expect(toggleSelection(['a'], 'b', 2)).toEqual(['a', 'b']);
+    expect(toggleSelection(['a', 'b'], 'c', 2)).toEqual(['a', 'b']);
+    expect(toggleSelection(['a', 'b'], 'a', 2)).toEqual(['b']);
+    const objectId = { object: 'forward' };
+    expect(toggleSelection([objectId], objectId)).toEqual([]);
+  });
+
   it('requires the configured number of unique legal cards', () => {
     const pending = choice();
     expect(validateChoiceDraft(pending, { choiceId: pending.id, selected: ['a'], amounts: {} })).not.toEqual([]);

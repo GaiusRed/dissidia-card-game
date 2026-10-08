@@ -2,6 +2,8 @@ import type { CardObject, EngineContext, InstanceId, MatchState, Zone } from './
 import { moveCard } from './zones';
 import { scheduleDepartureAbilities } from './triggers';
 import { effectivePower } from './continuous';
+import { openRuleChoice } from './rule-choice';
+import { RULE_ENGINE_VERSION } from './rule-scripts';
 
 export interface DepartureReceipt { old: CardObject; destination: Zone }
 export function commanderCost(state: MatchState, instance: InstanceId, context: EngineContext): number {
@@ -26,32 +28,14 @@ export function requestDeparture(state: MatchState, instance: InstanceId, destin
     return { old, destination };
   }
   if (state.choice) throw new Error('Finish the current decision before starting a departure.');
-  state.choice = {
-    id: 'choice-' + state.nextId++, seat: card.owner, kind: 'confirm',
+  openRuleChoice(state, { seat: card.owner, kind: 'confirm',
     reason: 'Choose where your Commander goes as it leaves the field.',
     options: [
       { id: 'return', label: 'Return to Commander Zone', object: card.object },
       { id: 'destination', label: 'Use normal destination', object: card.object },
     ],
     min: 1, max: 1, allocation: null,
-    resume: { handler: 'departure', step: 'commander-return', data: { instance, destination } },
-  };
-  state.priority = null;
+    resume: { script: 'rules', version: RULE_ENGINE_VERSION, ability: 'choice-commander', step: 'destination',
+      payload: { instance, destination, seat: card.owner } } }, card);
   return null;
-}
-
-export function resolveDeparture(state: MatchState, selected: string, context?: EngineContext): DepartureReceipt | null {
-  const pending = state.choice;
-  if (!pending || !('handler' in pending.resume) || pending.resume.handler !== 'departure' || pending.resume.step !== 'commander-return') return null;
-  if (!pending.options.some(option => option.id === selected)) return null;
-  const data = pending.resume.data as { instance: InstanceId; destination: Zone };
-  const card = state.cards[data.instance];
-  if (!card || card.zone !== 'field' || card.owner !== pending.seat) return null;
-  const old = { ...card };
-  const lastPower = context ? effectivePower(state, card.object, context) : 0;
-  const destination = selected === 'return' ? 'commander' : data.destination;
-  state.choice = null;
-  moveCard(state, data.instance, destination);
-  if (context) scheduleDepartureAbilities(state, old, destination, context, lastPower);
-  return { old, destination };
 }

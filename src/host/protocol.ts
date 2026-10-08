@@ -17,6 +17,10 @@ export interface VisibleCard {
   commanderTax: number;
 }
 export interface TrayCard { instance: string; card: VisibleCard; sourceZone: Zone; cast: CastAccess | null }
+export interface StackViewEntry {
+  id: string; controller: Seat; source: string; lastKnown: CardObject; targets: string[];
+  mode: string | null; ability: string;
+}
 
 export interface MatchView {
   generation: number;
@@ -33,7 +37,8 @@ export interface MatchView {
   deckCounts: Record<Seat, number>;
   field: string[];
   stackCards: string[];
-  stack: MatchState['stack'];
+  stack: StackViewEntry[];
+  resolving: { source: string; controller: Seat; ability: string; lastKnown: import('../rules/types').CardObject; targets: string[] } | null;
   combat: MatchState['combat'];
   commanders: MatchState['commanders'];
   passes: number;

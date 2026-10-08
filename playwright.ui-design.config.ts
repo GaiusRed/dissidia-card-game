@@ -6,6 +6,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   outputDir: 'test-results/ui-design',
+  snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}-{projectName}-{platform}{ext}',
   reporter: [['list'], ['html', { outputFolder: 'playwright-report/ui-design', open: 'never' }],
     ['json', { outputFile: 'test-results/ui-design-results.json' }]],
   use: {

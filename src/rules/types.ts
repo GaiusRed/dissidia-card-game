@@ -17,7 +17,7 @@ export interface DeckList { commander: CardNumber; main: CardNumber[] }
 export interface FormatProfile { id: string; mainSize: 19 | 49; allowedSets: string[]; damageLimit: 7 }
 export interface AbilityDefinition {
   id: string; kind: 'action' | 'special' | 'auto' | 'field' | 'replacement';
-  handler: string; text: string; ex: boolean;
+  text: string; ex: boolean;
   trigger?: 'enter' | 'controlled-forward-leaves' | 'self-break' | 'end-phase';
   triggerDestination?: Zone[];
   target?: AbilityTargetRule;
@@ -43,7 +43,7 @@ export interface CardDefinition {
   version: string; rarity: 'C' | 'R' | 'H' | 'L' | 'S'; type: 'Forward' | 'Backup' | 'Summon';
   elements: Element[]; cost: number; power: number | null; jobs: string[]; categories: string[];
   generic: boolean; keywords: Keyword[]; abilities: AbilityDefinition[]; text: string;
-  summonHandler: string | null; summonTarget?: SummonTargetRule; exHandler?: string; ex: boolean;
+  summonTarget?: SummonTargetRule; ex: boolean;
 }
 export type Catalog = Readonly<Record<CardNumber, CardDefinition>>;
 export interface CardObject {
@@ -51,13 +51,13 @@ export interface CardObject {
   zone: Zone; dull: boolean; damage: number; controlledSinceTurn: number;
   attackedTurn: number | null; frozen: boolean;
 }
-export interface Continuation { handler: string; step: string; data: Json }
+export type RuleWork = { kind: 'empty-deck'; seat: Seat } | { kind: 'offer-ex'; seat: Seat; remaining: ObjectId[] };
 export interface ChoiceOption { id: string; label: string; object: ObjectId | null }
 export interface Choice {
   id: string; seat: Seat;
   kind: 'starting-player' | 'mulligan' | 'cards' | 'targets' | 'mode' | 'order' | 'allocation' | 'confirm';
   reason: string; options: ChoiceOption[]; min: number; max: number;
-  allocation: { total: number; increment: number } | null; resume: Continuation | ResumeRef;
+  allocation: { total: number; increment: number } | null; resume: ResumeRef;
 }
 export interface Answer { choice: string; selected: string[]; amounts: Record<string, number> }
 export interface Payment {
@@ -84,12 +84,16 @@ export interface Command { id: string; expectedSeq: number; seat: Seat; intent: 
 export interface RuleEvent { id: string; type: string; data: Json }
 export interface StackItem {
   id: ObjectId; controller: Seat; source: ObjectId; lastKnown: CardObject;
-  handler: string; targets: ObjectId[]; mode: string | null; data: Json; resume?: import('./contracts/execution').ResumeRef;
+  targets: ObjectId[]; mode: string | null; data: Json; resume: import('./contracts/execution').ResumeRef;
 }
-export interface EffectRecord {
-  id: string; timestamp: number; controller: Seat; source: ObjectId;
-  handler: string; data: Json; expiresTurn: number | null;
-}
+export interface TriggerGroup { seat: Seat; items: StackItem[] }
+interface EffectBase { id: string; timestamp: number; controller: Seat; source: ObjectId; expiresTurn: number | null }
+export type EffectRecord = EffectBase & (
+  | { kind: 'power-set'; object: ObjectId; value: number }
+  | { kind: 'power-modifier'; object: ObjectId; amount: number }
+  | { kind: 'keyword-add'; object: ObjectId; keyword: Keyword }
+  | { kind: 'borrowed-control'; object: ObjectId }
+);
 export interface CombatState {
   step: 'prepare' | 'declare' | 'block' | 'firstStrike' | 'damage' | 'normalDamage' | 'finish';
   participants: CardObject[];
@@ -104,8 +108,8 @@ export interface MatchState {
   zones: Record<Seat, Record<Exclude<Zone, 'field' | 'stack'>, InstanceId[]>>;
   field: InstanceId[]; stackCards: InstanceId[];
   commanders: Record<Seat, { instance: InstanceId; casts: number }>;
-  stack: StackItem[]; effects: EffectRecord[]; triggers: Continuation[];
-  work: Continuation[]; choice: Choice | null; combat: CombatState | null; result: Result | null;
+  stack: StackItem[]; effects: EffectRecord[]; triggers: TriggerGroup[];
+  work: RuleWork[]; choice: Choice | null; combat: CombatState | null; result: Result | null;
   execution: ExecutionState;
 }
 export interface StartOptions { seed: number; decks: [DeckList, DeckList]; format: FormatProfile }
@@ -130,11 +134,4 @@ export interface CastAccess {
 export interface EngineContext {
   catalog: Catalog;
   registry: CardRegistry;
-  handlers?: Readonly<Record<string, AbilityHandler>>;
 }
-export interface HandlerContext {
-  state: MatchState; catalog: Catalog; handlers: Readonly<Record<string, AbilityHandler>>;
-  registry: CardRegistry; frame: Continuation;
-}
-export interface HandlerResult { events: RuleEvent[]; next: Continuation[]; choice: Choice | null }
-export type AbilityHandler = (context: HandlerContext) => HandlerResult;

@@ -23,7 +23,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": null,
   "ex": false,
   "text": "No abilities."
 };

@@ -1,5 +1,7 @@
 import { effectivePower } from './continuous';
 import { prepareBatch } from './batches';
+import { openRuleChoice } from './rule-choice';
+import { RULE_ENGINE_VERSION } from './rule-scripts';
 import type { EngineContext, MatchState, RuleEvent } from './types';
 
 /** Freeze field departures into a batch before any movement or replacement choice occurs. */
@@ -45,14 +47,12 @@ export function runRuleCheckpoint(state: MatchState, context: EngineContext): Ru
     }
     if (excessSeat !== null) {
       const backups = field.filter(card => card.controller === excessSeat && context.catalog[card.card]?.type === 'Backup');
-      state.choice = {
-        id: `choice-${state.nextId++}`, seat: excessSeat, kind: 'cards',
+      openRuleChoice(state, { seat: excessSeat, kind: 'cards',
         reason: `Rule process: choose ${excess} Backup${excess === 1 ? '' : 's'} to put into the Break Zone.`,
         options: backups.map(card => ({ id: card.object, label: context.catalog[card.card]!.name, object: card.object })),
         min: excess, max: excess, allocation: null,
-        resume: { handler: 'rule-checkpoint', step: 'excess-backups', data: { seat: excessSeat } },
-      };
-      state.priority = null;
+        resume: { script: 'rules', version: RULE_ENGINE_VERSION, ability: 'choice-checkpoint', step: 'excess-backups',
+          payload: { seat: excessSeat } } }, backups[0]!);
       break;
     }
     break;

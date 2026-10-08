@@ -1,9 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
-import { controlledBurnSummon } from '../../shared/summon-effects';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
-
-export const abilityHandlers = { 'controlled-burn': controlledBurnSummon };
 
 export const card: CardDefinition = {
   "number": "P-020H",
@@ -25,7 +22,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "controlled-burn",
   "summonTarget": { "min": 1, "max": 1, "zones": ["field"], "types": ["Forward", "Backup"], "controller": "any", "dull": null,
     "modes": [
       { "id": "backup", "label": "Break a Backup (cost 2 or less)", "types": ["Backup"], "maxCost": 2 },

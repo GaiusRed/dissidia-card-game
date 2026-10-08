@@ -44,7 +44,7 @@ describe('generic rule operations', () => {
     state.turn = 5;
     state.active = 0;
     state.phase = 'main1';
-    const resume = { script: 'rules', version: '4', ability: 'test-delayed', step: 'resolve', payload: null } as const;
+    const resume = { script: 'rules', version: '5', ability: 'test-delayed', step: 'resolve', payload: null } as const;
     const source = Object.values(state.cards).find(card => card.card === 'P-001L')!;
     applyOperation(state, { kind: 'delay', at: 'controller-end', controller: 0, source: source.object, resume }, context);
     applyOperation(state, { kind: 'delay', at: 'controller-end', controller: 1, source: source.object, resume }, context);

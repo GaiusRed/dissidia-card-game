@@ -39,6 +39,7 @@ export function buildFixture(input: Fixture, context: EngineContext): MatchState
     const moved = state.cards[card.instance]!;
     moved.controller = placement.seat;
     moved.dull = placement.dull ?? false;
+    moved.frozen = placement.frozen ?? false;
     moved.damage = placement.damage ?? 0;
     moved.controlledSinceTurn = placement.controlledSinceTurn ?? 1;
     moved.attackedTurn = placement.attackedTurn ?? null;

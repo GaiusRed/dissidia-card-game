@@ -1,5 +1,6 @@
 import type { Command, DeckList, MatchState, Transition, Versions } from '../rules/types';
 import { z } from 'zod';
+import { CLIENT_BUILD_ID } from '../app-build';
 import { commandSchema } from '../rules/codec';
 import { executionStateSchema, resumeRefSchema } from '../rules/contracts/execution';
 
@@ -13,15 +14,21 @@ const cardSchema = z.strictObject({
   zone: zoneSchema, dull: z.boolean(), damage: z.number().int().nonnegative(), controlledSinceTurn: z.number().int().nonnegative(),
   attackedTurn: z.number().int().nonnegative().nullable(), frozen: z.boolean(),
 });
-const continuationSchema = z.strictObject({ handler: z.string().min(1), step: z.string().min(1), data: jsonSchema });
+const triggerGroupSchema = z.strictObject({
+  seat: seatSchema,
+  items: z.array(z.strictObject({ id: z.string(), controller: seatSchema, source: z.string(), lastKnown: cardSchema,
+    targets: z.array(z.string()), mode: z.string().nullable(), data: jsonSchema, resume: resumeRefSchema })),
+});
+const workSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('empty-deck'), seat: seatSchema }),
+  z.strictObject({ kind: z.literal('offer-ex'), seat: seatSchema, remaining: z.array(z.string()) }),
+]);
 const choiceSchema = z.strictObject({
   id: z.string().min(1), seat: seatSchema, kind: z.enum(['starting-player', 'mulligan', 'cards', 'targets', 'mode', 'order', 'allocation', 'confirm']),
   reason: z.string(), options: z.array(z.strictObject({ id: z.string(), label: z.string(), object: z.string().nullable() })),
   min: z.number().int().nonnegative(), max: z.number().int().nonnegative(),
   allocation: z.strictObject({ total: z.number().int().nonnegative(), increment: z.number().int().positive() }).nullable(),
-  resume: z.union([continuationSchema, z.object({
-    script: z.string().min(1), version: z.string().min(1), ability: z.string().min(1), step: z.string().min(1), payload: jsonSchema,
-  }).strict()]),
+  resume: resumeRefSchema,
 });
 const combatSchema = z.strictObject({
   step: z.enum(['prepare', 'declare', 'block', 'firstStrike', 'damage', 'normalDamage', 'finish']),
@@ -58,17 +65,26 @@ const matchStateSchema = z.strictObject({
   field: z.array(z.string()), stackCards: z.array(z.string()),
   commanders: z.strictObject({ '0': z.strictObject({ instance: z.string(), casts: z.number().int().nonnegative() }), '1': z.strictObject({ instance: z.string(), casts: z.number().int().nonnegative() }) }),
   stack: z.array(z.strictObject({ id: z.string(), controller: seatSchema, source: z.string(), lastKnown: cardSchema,
-    handler: z.string(), targets: z.array(z.string()), mode: z.string().nullable(), data: jsonSchema,
-    resume: resumeRefSchema.optional() })),
-  effects: z.array(z.strictObject({ id: z.string(), timestamp: z.number().int(), controller: seatSchema, source: z.string(),
-    handler: z.string(), data: jsonSchema, expiresTurn: z.number().int().nullable() })),
-  triggers: z.array(continuationSchema), work: z.array(continuationSchema), choice: z.nullable(choiceSchema), combat: z.nullable(combatSchema), result: z.nullable(resultSchema),
+    targets: z.array(z.string()), mode: z.string().nullable(), data: jsonSchema,
+    resume: resumeRefSchema })),
+  effects: z.array(z.discriminatedUnion('kind', [
+    z.strictObject({ id: z.string(), timestamp: z.number().int(), controller: seatSchema, source: z.string(),
+      kind: z.literal('power-set'), object: z.string(), value: z.number().int(), expiresTurn: z.number().int().nullable() }),
+    z.strictObject({ id: z.string(), timestamp: z.number().int(), controller: seatSchema, source: z.string(),
+      kind: z.literal('power-modifier'), object: z.string(), amount: z.number().int(), expiresTurn: z.number().int().nullable() }),
+    z.strictObject({ id: z.string(), timestamp: z.number().int(), controller: seatSchema, source: z.string(),
+      kind: z.literal('keyword-add'), object: z.string(), keyword: z.enum(['Brave', 'Haste', 'First Strike', 'Freeze']), expiresTurn: z.number().int().nullable() }),
+    z.strictObject({ id: z.string(), timestamp: z.number().int(), controller: seatSchema, source: z.string(),
+      kind: z.literal('borrowed-control'), object: z.string(), expiresTurn: z.number().int().nullable() }),
+  ])),
+  triggers: z.array(triggerGroupSchema), work: z.array(workSchema), choice: z.nullable(choiceSchema), combat: z.nullable(combatSchema), result: z.nullable(resultSchema),
   execution: executionStateSchema,
 });
 const acceptedReplySchema = z.strictObject({ ok: z.literal(true), state: matchStateSchema, events: z.array(ruleEventSchema) });
 export const savedReceiptSchema = z.strictObject({ command: commandSchema, reply: acceptedReplySchema });
 export const matchSaveSchema = z.strictObject({
   format: z.literal('dissidia-save-v1'), versions: versionsSchema, savedAt: z.string().datetime(),
+  clientBuild: z.string().min(1).optional(),
   originDescriptor: matchOriginDescriptorSchema, origin: matchStateSchema, manifest: instanceManifestSchema,
   state: matchStateSchema, transcript: z.array(commandSchema), receipts: z.array(savedReceiptSchema),
 });
@@ -84,6 +100,7 @@ export interface MatchSave {
   format: 'dissidia-save-v1';
   versions: Versions;
   savedAt: string;
+  clientBuild?: string;
   originDescriptor: MatchOriginDescriptor;
   origin: MatchState;
   manifest: InstanceManifestEntry[];
@@ -93,11 +110,11 @@ export interface MatchSave {
 }
 export function createSave(state: MatchState, transcript: Command[], origin: MatchState = state,
   originDescriptor: MatchOriginDescriptor = { kind: 'snapshot' },
-  receipts: MatchSave['receipts'] = []): MatchSave {
+  receipts: MatchSave['receipts'] = [], clientBuild = CLIENT_BUILD_ID): MatchSave {
   const commanders = new Set([origin.commanders[0].instance, origin.commanders[1].instance]);
   const manifest = Object.values(origin.cards).map(card => ({ instance: card.instance, card: card.card,
     owner: card.owner, commander: commanders.has(card.instance) })).sort((left, right) => left.instance.localeCompare(right.instance));
-  return { format: 'dissidia-save-v1', versions: { ...state.versions }, savedAt: new Date().toISOString(),
+  return { format: 'dissidia-save-v1', versions: { ...state.versions }, savedAt: new Date().toISOString(), clientBuild,
     originDescriptor: JSON.parse(JSON.stringify(originDescriptor)) as MatchOriginDescriptor,
     origin: JSON.parse(JSON.stringify(origin)) as MatchState, manifest,
     state: JSON.parse(JSON.stringify(state)) as MatchState,

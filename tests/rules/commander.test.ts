@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { commanderCost } from '../../src/rules/commander';
-import { requestDeparture, resolveDeparture } from '../../src/rules/commander';
+import { requestDeparture } from '../../src/rules/commander';
+import { applyCommand } from '../../src/rules/engine';
+import { projectView } from '../../src/host/views';
 import { fixture, context } from '../support/harness';
 
 describe('Commander tax', () => {
@@ -24,17 +26,44 @@ describe('Commander tax', () => {
     requestDeparture(h.state, instance, 'break');
     expect(h.state.choice?.seat).toBe(0);
     expect(h.state.cards[instance]!.zone).toBe('field');
-    expect(resolveDeparture(h.state, 'return')?.old.object).toBe(before);
-    expect(h.state.cards[instance]!.zone).toBe('commander');
-    expect(h.state.cards[instance]!.object).not.toBe(before);
+    const choice = h.state.choice!;
+    const result = applyCommand(h.state, { id: 'commander-return', expectedSeq: h.state.seq, seat: 0,
+      intent: { kind: 'answer', answer: { choice: choice.id, selected: ['return'], amounts: {} } } }, context);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.cards[instance]!.zone).toBe('commander');
+    expect(result.state.cards[instance]!.object).not.toBe(before);
     expect(h.state.commanders[0].casts).toBe(0);
   });
   it('uses the normal destination if its owner declines the replacement', () => {
     const h = fixture({ placements: [{ seat: 0, card: 'P-001L', zone: 'field' }] });
     const instance = h.state.commanders[0].instance;
     requestDeparture(h.state, instance, 'break');
-    const receipt = resolveDeparture(h.state, 'destination');
-    expect(receipt?.destination).toBe('break');
-    expect(h.state.zones[0].break).toEqual([instance]);
+    const choice = h.state.choice!;
+    const result = applyCommand(h.state, { id: 'commander-decline', expectedSeq: h.state.seq, seat: 0,
+      intent: { kind: 'answer', answer: { choice: choice.id, selected: ['destination'], amounts: {} } } }, context);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.zones[0].break).toEqual([instance]);
+  });
+  it('preserves the Commander instance when its normal departure destination is the Damage Zone', () => {
+    const h = fixture({ placements: [{ seat: 0, card: 'P-001L', zone: 'field' }] });
+    const instance = h.state.commanders[0].instance;
+    const object = h.state.cards[instance]!.object;
+    requestDeparture(h.state, instance, 'damage', context);
+    const choice = h.state.choice!;
+
+    const result = applyCommand(h.state, { id: 'commander-damage-destination', expectedSeq: h.state.seq, seat: 0,
+      intent: { kind: 'answer', answer: { choice: choice.id, selected: ['destination'], amounts: {} } } }, context);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.zones[0].damage).toEqual([instance]);
+    expect(result.state.cards[instance]!.zone).toBe('damage');
+    expect(result.state.cards[instance]!.object).not.toBe(object);
+    expect(result.state.commanders[0].instance).toBe(instance);
+    const view = projectView(result.state, 0, [], context);
+    expect(view.zones[0].damage).toEqual([instance]);
+    expect(view.presentations[result.state.cards[instance]!.object]).toMatchObject({ commander: true, zone: 'damage' });
   });
 });

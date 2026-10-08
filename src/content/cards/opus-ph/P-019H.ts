@@ -1,10 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
-import { finalSparkSummon } from '../../shared/summon-effects';
-
-export const abilityHandlers = { 'final-spark': finalSparkSummon };
-
 export const card: CardDefinition = {
   "number": "P-019H",
   "name": "Final Spark",
@@ -25,7 +21,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "final-spark",
   "summonTarget": { "min": 0, "max": 0, "zones": [], "types": [], "controller": "any", "dull": null },
   "ex": false,
   "text": "Deal your opponent 2 points of damage."

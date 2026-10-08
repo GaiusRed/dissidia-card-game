@@ -2,10 +2,6 @@ import type { CardDefinition } from '../../../rules/types';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
 import { RULE_ENGINE_VERSION } from '../../../rules/rule-scripts';
-import { risingUndertowSummon } from '../../shared/summon-effects';
-export const abilityHandlers = {
-  'rising-undertow': risingUndertowSummon,
-};
 
 export const card: CardDefinition = {
   "number": "P-040R",
@@ -27,7 +23,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "rising-undertow",
   "summonTarget": { "min": 0, "max": 0, "zones": [], "types": [], "controller": "any", "dull": null },
   "ex": false,
   "text": "Draw 2 cards. At the beginning of your End Phase, discard 1 card."

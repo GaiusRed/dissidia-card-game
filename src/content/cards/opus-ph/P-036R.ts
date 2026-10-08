@@ -1,9 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
-import { stillwaterSummon } from '../../shared/summon-effects';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
-
-export const abilityHandlers = { stillwater: stillwaterSummon };
 
 export const card: CardDefinition = {
   "number": "P-036R",
@@ -25,7 +22,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "stillwater",
   "summonTarget": { "min": 1, "max": 1, "zones": ["stack"], "types": ["Summon"], "controller": "any", "dull": null },
   "ex": false,
   "text": "Choose 1 Summon on the stack. Cancel its effect and put it into its owner's Break Zone."

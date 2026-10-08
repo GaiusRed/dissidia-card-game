@@ -26,9 +26,9 @@ export function activateAbility(state: MatchState, seat: Seat, sourceId: ObjectI
   const ability: AbilityDefinition | undefined = definition?.abilities.find(item => item.id === abilityId);
   if (!ability || (ability.kind !== 'action' && ability.kind !== 'special')) return rejected('UNKNOWN_ABILITY', 'That ability cannot be activated.');
   const rule = ability.activation;
-  const typed = context.registry?.manifest.cards.some(item => item.number === source.card) && context.registry
-    ? context.registry.card(source.card).abilities.some(item => item.id === abilityId) : false;
-  if (!rule || (!typed && !context.handlers?.[ability.handler])) return rejected('UNSUPPORTED_ABILITY', 'This placeholder ability is not implemented.');
+  const registered = context.registry.manifest.cards.find(item => item.number === source.card);
+  const typedScript = context.registry.card(source.card).abilities.find(item => item.id === abilityId);
+  if (!rule || !registered || !typedScript) return rejected('UNSUPPORTED_ABILITY', 'This placeholder ability is not implemented.');
   if (rule.dullSource && !isReadyForDullCost(state, sourceId, context)) {
     return rejected('UNREADY_ABILITY_SOURCE', 'A character that just entered or changed control needs Haste to pay a dulling cost.');
   }
@@ -44,12 +44,9 @@ export function activateAbility(state: MatchState, seat: Seat, sourceId: ObjectI
   if (errors.length) return { errors, events: [] };
   const lastKnown = { ...source };
   const costEvents = commitPayment(state, seat, sourceId, payment, costSpec, context);
-  const registered = context.registry?.manifest.cards.find(item => item.number === source.card);
-  const typedScript = registered && context.registry
-    ? context.registry.card(source.card).abilities.find(item => item.id === abilityId) : undefined;
   state.stack.push({ id: `stack-${state.nextId++}`, controller: seat, source: sourceId, lastKnown,
-    handler: ability.handler, targets: [...targets], mode: null, data: { source: sourceId, targets },
-    ...(registered && typedScript ? { resume: { script: source.card, version: registered.behaviorVersion, ability: abilityId, step: 'resolve', payload: null } } : {}) });
+    targets: [...targets], mode: null, data: { source: sourceId, targets },
+    resume: { script: source.card, version: registered.behaviorVersion, ability: typedScript.id, step: 'resolve', payload: null } });
   state.passes = 0;
   state.priority = seat;
   return { errors: [], events: costEvents };

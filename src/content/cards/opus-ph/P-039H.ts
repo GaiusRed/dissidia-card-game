@@ -1,9 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
-import { borrowedBannerSummon } from '../../shared/summon-effects';
 import { z } from 'zod';
 import type { CardScript } from '../../../rules/contracts/card-script';
-
-export const abilityHandlers = { 'borrowed-banner': borrowedBannerSummon };
 
 export const card: CardDefinition = {
   "number": "P-039H",
@@ -25,7 +22,6 @@ export const card: CardDefinition = {
   "generic": false,
   "keywords": [],
   "abilities": [],
-  "summonHandler": "borrowed-banner",
   "summonTarget": { "min": 1, "max": 1, "zones": ["field"], "types": ["Forward", "Backup"], "controller": "opponent", "dull": null },
   "ex": false,
   "text": "Choose 1 Character your opponent controls on the field. Gain control of it until the end of the turn."

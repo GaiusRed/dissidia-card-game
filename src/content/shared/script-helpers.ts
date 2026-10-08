@@ -4,7 +4,7 @@ import type { AbilityScript, CardScript, TriggerSubscription } from '../../rules
 import type { Operation, ResolutionContext, ResumeRef } from '../../rules/contracts/execution';
 
 export function vanillaScript(metadata: CardDefinition): CardScript {
-  if (metadata.abilities.length > 0 || metadata.summonHandler !== null || metadata.ex) {
+  if (metadata.abilities.length > 0 || metadata.type === 'Summon' || metadata.ex) {
     throw new Error(`${metadata.number} has behavior and cannot use the vanilla script helper.`);
   }
   return { metadata, behaviorVersion: '1', abilities: [] };

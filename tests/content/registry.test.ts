@@ -29,14 +29,27 @@ function card(number: string, abilitySteps: Record<string, ResumeStep> = {}): Ca
   const metadata = opusPh[number]!;
   const abilities: AbilityScript[] = metadata.abilities.map(printed => ({
     id: printed.id, kind: printed.kind, text: printed.text, ex: printed.ex, zones: ['field'],
-    cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-    modes: [], targets: { min: 0, max: 0, distinct: true, accepts: () => true },
+    cost: printed.activation ? { cp: printed.activation.cost, elements: printed.activation.elements,
+      dullSource: printed.activation.dullSource, sacrificeSource: printed.activation.sacrificeSource,
+      sameNameDiscard: printed.activation.specialDiscardName !== null }
+      : { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
+    modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
     triggers: [], fieldEffects: [], replacements: [], steps: abilitySteps,
   }));
   return { metadata, behaviorVersion: '1', abilities };
 }
 
 describe('explicit card registry', () => {
+  it('keeps dispatch identifiers in typed scripts instead of printed card metadata', () => {
+    for (const script of opusPhRegisteredScripts) {
+      expect(Object.hasOwn(script.metadata, 'summonHandler')).toBe(false);
+      expect(Object.hasOwn(script.metadata, 'exHandler')).toBe(false);
+      for (const ability of script.metadata.abilities) {
+        expect(Object.hasOwn(ability, 'handler')).toBe(false);
+      }
+    }
+  });
+
   it('combines every currently migrated card module into one duplicate-free registry', () => {
     expect(opusPhRegisteredScripts).toHaveLength(40);
     expect(new Set(opusPhRegisteredScripts.map(script => script.metadata.number)).size).toBe(40);
@@ -108,7 +121,7 @@ describe('explicit card registry', () => {
     expect(output.batches).toEqual([{ simultaneous: false, operations: [
       { kind: 'draw', seat: 1, count: 2 },
       { kind: 'delay', at: 'controller-end', controller: 1, source: source.state.cards[physical.instance]!.object,
-        resume: { script: 'rules', version: '4', ability: 'delayed-discard', step: 'resolve', payload: { seat: 1 } } },
+        resume: { script: 'rules', version: '5', ability: 'delayed-discard', step: 'resolve', payload: { seat: 1 } } },
     ] }]);
   });
 
@@ -153,7 +166,8 @@ describe('explicit card registry', () => {
     const lastKnown = moveCard(h.state, stillwater.instance, 'stack');
     const summonLki = moveCard(h.state, summon.instance, 'stack');
     const stackItem = { id: 'stack-scorch', controller: 0 as const, source: h.state.cards[summon.instance]!.object,
-      lastKnown: summonLki, handler: 'scorch', targets: [], mode: null, data: null };
+      lastKnown: summonLki, targets: [], mode: null, data: null,
+      resume: { script: 'P-015C', version: '1', ability: 'scorch', step: 'resolve', payload: null } };
     h.state.stack.push(stackItem);
     const resume = { script: 'P-036R', version: '1', ability: 'stillwater', step: 'resolve', payload: null };
     const output = registry.resume(resume).run({ state: h.state, catalog: context.catalog, answer: null, frame: {
@@ -180,7 +194,8 @@ describe('explicit card registry', () => {
 
   it('declares Summon targets, counts, zones, and modes in card metadata', async () => {
     const { opusPhCards } = await import('../../src/content/manifest');
-    const summons = opusPhCards.filter(definition => definition.summonHandler !== null);
+    const summons = opusPhCards.filter(definition => definition.type === 'Summon' &&
+      opusPhRegistry.card(definition.number).abilities.some(ability => ability.kind === 'summon'));
     expect(summons).toHaveLength(12);
     for (const definition of summons) {
       expect(definition.summonTarget, definition.number).toBeDefined();
@@ -197,15 +212,88 @@ describe('explicit card registry', () => {
     expect(() => createRegistry([{ ...card('P-001L'), abilities: [] }], 'test')).toThrow('Unresolved printed ability');
   });
 
+  it('rejects duplicate ability IDs and missing EX implementations', () => {
+    const original = opusPhActionScripts.find(script => script.metadata.number === 'P-001L')!;
+    const ability = original.abilities[0]!;
+    expect(() => createRegistry([{ ...original, abilities: [ability, ability] }], 'duplicate-ability')).toThrow('Duplicate ability ID');
+
+    const scorch = opusPhSummonScripts.find(script => script.metadata.number === 'P-015C')!;
+    expect(() => createRegistry([{ ...scorch, abilities: scorch.abilities.filter(item => !item.ex) }], 'missing-ex'))
+      .toThrow('Missing EX ability');
+
+    const warCry = opusPhSummonScripts.find(script => script.metadata.number === 'P-017R')!;
+    expect(() => createRegistry([{ ...warCry, abilities: [] }], 'missing-summon')).toThrow('Missing Summon ability');
+  });
+
+  it('sorts the registry manifest regardless of module registration order', () => {
+    const registry = createRegistry([...opusPhVanillaScripts].reverse(), 'sorted-test');
+    expect(registry.manifest.cards.map(item => item.number)).toEqual(
+      opusPhVanillaScripts.map(script => script.metadata.number).sort(),
+    );
+  });
+
   it('pins behavior versions and resolves checked named steps', () => {
     const registry = createRegistry([card('P-001L', { resolve: step })], 'fixture-v1');
     expect(registry.manifest.cards).toEqual([{ number: 'P-001L', contentVersion: 'opus-ph-v1', behaviorVersion: '1' }]);
     expect(registry.resume({ script: 'P-001L', version: '1', ability: 'flare-order', step: 'resolve', payload: null })).toBe(step);
     expect(() => registry.resume({ script: 'P-001L', version: 'old', ability: 'flare-order', step: 'resolve', payload: null })).toThrow('Incompatible behavior version');
+    expect(() => registry.resume({ script: 'P-001L', version: '1', ability: 'flare-order', step: 'missing', payload: null })).toThrow('Unknown resume step');
+
+    const wrongPayload = card('P-001L', { resolve: { ...step, payloadSchema: z.string() } });
+    expect(() => createRegistry([wrongPayload], 'wrong-payload').resume({
+      script: 'P-001L', version: '1', ability: 'flare-order', step: 'resolve', payload: null,
+    })).toThrow('Invalid payload');
   });
 
   it('requires a resolving step for each registered ability', () => {
     expect(() => createRegistry([card('P-001L', { declare: step })], 'test')).toThrow('Missing resolve step');
+  });
+
+  it('rejects a typed activation whose cost does not match its printed declaration', () => {
+    const original = opusPhActionScripts.find(script => script.metadata.number === 'P-001L')!;
+    const ability = original.abilities[0]!;
+    const mismatches: CardScript['abilities'][number]['cost'][] = [
+      { ...ability.cost, cp: ability.cost.cp + 1 },
+      { ...ability.cost, elements: ['Water'] },
+      { ...ability.cost, dullSource: false },
+      { ...ability.cost, sacrificeSource: true },
+      { ...ability.cost, sameNameDiscard: false },
+    ];
+    for (const [index, cost] of mismatches.entries()) {
+      const script: CardScript = { ...original, abilities: [{ ...ability, cost }] };
+      expect(() => createRegistry([script], `mismatched-cost-${index}`), `cost component ${index}`).toThrow(/cost mismatch/i);
+    }
+
+    const scorch = opusPhSummonScripts.find(script => script.metadata.number === 'P-015C')!;
+    const ex = scorch.abilities.find(item => item.ex)!;
+    const paidEx: CardScript = { ...scorch, abilities: scorch.abilities.map(item => item.id === ex.id
+      ? { ...item, cost: { ...item.cost, cp: 1 } } : item) };
+    expect(() => createRegistry([paidEx], 'paid-ex')).toThrow(/cost mismatch/i);
+  });
+
+  it('rejects a typed Summon target count that disagrees with its printed declaration', () => {
+    const original = opusPhSummonScripts.find(script => script.metadata.number === 'P-017R')!;
+    const mismatched: CardScript = { ...original, abilities: original.abilities.map(ability => ({
+      ...ability, targets: { ...ability.targets, max: ability.targets.max + 1 },
+    })) };
+
+    expect(() => createRegistry([mismatched], 'mismatched-targets')).toThrow(/target mismatch/i);
+
+    const modal = opusPhSummonScripts.find(script => script.metadata.number === 'P-020H')!;
+    const mismatchedModes: CardScript = { ...modal, abilities: modal.abilities.map(ability => ({
+      ...ability, modes: ability.modes.map((mode, index) => index === 0 ? { ...mode, label: 'Unprinted mode' } : mode),
+    })) };
+    expect(() => createRegistry([mismatchedModes], 'mismatched-modes')).toThrow(/mode mismatch/i);
+  });
+
+  it('rejects an activated script whose target count disagrees with its printed declaration', () => {
+    const original = opusPhActionScripts.find(script => script.metadata.number === 'P-001L')!;
+    const ability = original.abilities[0]!;
+    const mismatched: CardScript = { ...original, abilities: [{
+      ...ability, targets: { ...ability.targets, min: 0, max: 0 },
+    }] };
+
+    expect(() => createRegistry([mismatched], 'mismatched-activation-targets')).toThrow(/target mismatch/i);
   });
 });
 

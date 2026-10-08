@@ -7,6 +7,13 @@ export interface ChoiceDraft {
   amounts: Record<string, number>;
 }
 
+/** Toggle a local selection while preserving order and its optional capacity limit. */
+export function toggleSelection<T>(selected: readonly T[], option: T, maximum = Number.MAX_SAFE_INTEGER): T[] {
+  if (selected.includes(option)) return selected.filter(value => value !== option);
+  if (selected.length >= maximum) return [...selected];
+  return [...selected, option];
+}
+
 export function validateChoiceDraft(choice: MatchView['choice'], draft: ChoiceDraft): string[] {
   if (!choice) return ['There is no required choice to answer.'];
   if (draft.choiceId !== choice.id) return ['The required choice changed.'];

@@ -54,7 +54,7 @@ describe('suspended effect continuations', () => {
     expect(d.answer([d.object(0, 'P-012H')]).ok).toBe(true);
     expect(d.state.cards[Object.values(d.state.cards).find(card => card.card === 'P-005R')!.instance]!.zone).toBe('break');
     expect(d.state.choice?.reason).toContain('choose a target');
-    expect(d.state.stack.some(item => item.handler === 'cinder-witness-damage')).toBe(true);
+    expect(d.state.stack.some(item => item.resume.ability === 'cinder-witness-leave')).toBe(true);
   });
 
   it('rejects a typed choice that has no saved execution frame', () => {

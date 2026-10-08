@@ -51,7 +51,12 @@ export type Operation =
   | { kind: 'cancel-stack'; item: ObjectId }
   | { kind: 'setup-first-player'; seat: Seat }
   | { kind: 'setup-begin-game'; firstPlayer: Seat }
-  | { kind: 'batch-move-replacement'; batch: string; operation: number; object: ObjectId; destination: Zone };
+  | { kind: 'batch-move-replacement'; batch: string; operation: number; object: ObjectId; destination: Zone }
+  | { kind: 'trigger-target'; item: ObjectId; target: ObjectId }
+  | { kind: 'order-triggers'; seat: Seat; items: ObjectId[] }
+  | { kind: 'combat-allocation'; amounts: Record<ObjectId, number> }
+  | { kind: 'commander-destination'; instance: string; destination: Zone; selected: string; seat: Seat }
+  | { kind: 'end-phase-checkpoint' };
 export interface OperationBatch { simultaneous: boolean; operations: Operation[] }
 export interface PendingBatch {
   id: string;
@@ -102,6 +107,11 @@ const operationSchema: z.ZodType<Operation> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('setup-first-player'), seat: seatSchema }).strict(),
   z.object({ kind: z.literal('setup-begin-game'), firstPlayer: seatSchema }).strict(),
   z.object({ kind: z.literal('batch-move-replacement'), batch: z.string().min(1), operation: z.number().int().nonnegative(), object: z.string(), destination: z.enum(['deck', 'hand', 'field', 'stack', 'break', 'removed', 'damage', 'commander']) }).strict(),
+  z.object({ kind: z.literal('trigger-target'), item: z.string(), target: z.string() }).strict(),
+  z.object({ kind: z.literal('order-triggers'), seat: seatSchema, items: z.array(z.string()) }).strict(),
+  z.object({ kind: z.literal('combat-allocation'), amounts: z.record(z.string(), z.number().int().nonnegative()) }).strict(),
+  z.object({ kind: z.literal('commander-destination'), instance: z.string(), destination: z.enum(['deck', 'hand', 'field', 'stack', 'break', 'removed', 'damage', 'commander']), selected: z.string(), seat: seatSchema }).strict(),
+  z.object({ kind: z.literal('end-phase-checkpoint') }).strict(),
 ]);
 const operationBatchSchema = z.object({ simultaneous: z.boolean(), operations: z.array(operationSchema) }).strict();
 const returnWindowSchema = z.discriminatedUnion('kind', [

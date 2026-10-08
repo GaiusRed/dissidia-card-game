@@ -1,5 +1,7 @@
 import { effectivePower, hasKeyword } from './continuous';
 import { dealPlayerDamage, replacementDamage } from './damage';
+import { openRuleChoice } from './rule-choice';
+import { RULE_ENGINE_VERSION } from './rule-scripts';
 import type { EngineContext, MatchState, ObjectId, RuleError, RuleEvent, Seat } from './types';
 
 const err = (code: string, message: string): RuleError => ({ code, message });
@@ -69,15 +71,12 @@ export function resolveCombat(state: MatchState, context: EngineContext): RuleEv
   if (attackers.length === 0) { state.combat = null; return events; }
   if (attackers.length > 1 && blocker?.zone === 'field' && Object.keys(combat.allocation).length === 0 && combat.step !== 'normalDamage') {
     const total = effectivePower(state, blocker.object, context);
-    state.choice = {
-      id: `choice-${state.nextId++}`, seat: other(state.active), kind: 'allocation',
+    openRuleChoice(state, { seat: other(state.active), kind: 'allocation',
       reason: 'Assign the blocking Forward’s battle damage among the party.',
       options: attackers.map(card => ({ id: card.object, label: context.catalog[card.card]?.name ?? card.card, object: card.object })),
       min: 0, max: 0, allocation: { total, increment: 1000 },
-      resume: { handler: 'combat', step: 'party-allocation', data: { blocker: blocker.object } },
-    };
-    state.priority = null;
-    state.passes = 0;
+      resume: { script: 'rules', version: RULE_ENGINE_VERSION, ability: 'choice-combat', step: 'allocation',
+        payload: { blocker: blocker.object } } }, blocker);
     return events;
   }
   const power = (card: (typeof attackers)[number]) => effectivePower(state, card.object, context);

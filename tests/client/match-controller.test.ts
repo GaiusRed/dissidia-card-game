@@ -8,7 +8,7 @@ describe('projected match controller', () => {
     const state = fixture({}).state;
     state.choice = { id: 'required-choice', seat: 0, kind: 'confirm', reason: 'Choose.',
       options: [{ id: 'yes', label: 'Yes', object: null }], min: 1, max: 1, allocation: null,
-      resume: { handler: 'test', step: 'answer', data: null } };
+      resume: { script: 'rules', version: '5', ability: 'choice-trigger', step: 'target', payload: { item: 'stack-test' } } };
     state.priority = null;
     const controller = new MatchController(projectView(state, 0, [], context, 1));
 
@@ -66,7 +66,7 @@ describe('projected match controller', () => {
     const state = fixture({}).state;
     state.choice = { id: 'choice-before', seat: 0, kind: 'confirm', reason: 'Choose.',
       options: [{ id: 'yes', label: 'Yes', object: null }], min: 1, max: 1, allocation: null,
-      resume: { handler: 'test', step: 'answer', data: null } };
+      resume: { script: 'rules', version: '5', ability: 'choice-trigger', step: 'target', payload: { item: 'stack-test' } } };
     state.priority = null;
     const initial = projectView(state, 0, [], context, 8);
     const controller = new MatchController(initial);

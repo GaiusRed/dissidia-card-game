@@ -31,7 +31,7 @@ export function advanceTurnStep(state: MatchState, _context: EngineContext): Rul
   for (let index = 0; index < count; index += 1) {
     const instance = state.zones[state.active].deck[0];
     if (!instance) {
-      state.work.push({ handler: 'rule-process', step: 'empty-deck', data: { seat: state.active } });
+      state.work.push({ kind: 'empty-deck', seat: state.active });
       events.push(event(state, 'player.attempted-empty-draw', { seat: state.active }));
       break;
     }

@@ -20,4 +20,11 @@ describe('game outcomes', () => {
     checkOutcomes(h.state, context);
     expect(h.state.result).toBeNull();
   });
+  it('draws when one seat reaches seven damage as the other loses by deckout', () => {
+    const h = fixture({});
+    h.state.zones[1].damage = h.state.zones[1].deck.splice(0, 7);
+    h.state.work.push({ kind: 'empty-deck', seat: 0 });
+    checkOutcomes(h.state, context);
+    expect(h.state.result).toEqual({ winner: null, reason: 'simultaneous' });
+  });
 });

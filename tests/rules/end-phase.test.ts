@@ -32,7 +32,7 @@ describe('End Phase checkpoints', () => {
     expect(state.cards[Object.values(state.cards).find(card => card.card === 'P-003C')!.instance]!.zone).toBe('break');
     expect(state.cards[Object.values(state.cards).find(card => card.card === 'P-004C')!.instance]!.zone).toBe('break');
     expect(state.choice).toBeNull();
-    expect(state.stack.some(item => item.handler === 'cinder-witness-damage')).toBe(false);
+    expect(state.stack.some(item => item.resume.ability === 'cinder-witness-leave')).toBe(false);
   });
 
   it('lets the turn player order simultaneous Mist Caller and Rising Undertow triggers', () => {
@@ -44,7 +44,7 @@ describe('End Phase checkpoints', () => {
     const source = Object.values(h.state.cards).find(card => card.card === 'P-040R')!;
     h.state.execution.delayed.push({ id: 'delayed-undertow', controller: 1, source: source.object, lastKnown: { ...source },
       createdTurn: h.state.turn, eligibleTurn: h.state.turn, at: 'controller-end',
-      resume: { script: 'rules', version: '4', ability: 'delayed-discard', step: 'resolve', payload: { seat: 1 } } });
+      resume: { script: 'rules', version: '5', ability: 'delayed-discard', step: 'resolve', payload: { seat: 1 } } });
     let state = send(h.state, 1, engine);
     state = send(state, 0, engine);
     expect(state.phase).toBe('end');
@@ -66,7 +66,7 @@ describe('End Phase checkpoints', () => {
     if (!declared.ok) return;
     expect(declared.state.stack.find(item => item.lastKnown.card === 'P-034R')?.resume)
       .toMatchObject({ script: 'P-034R', ability: 'mist-caller-end' });
-    expect(declared.state.stack.map(item => item.handler)).toEqual(['delayed', 'mist-caller-activate']);
+    expect(declared.state.stack.map(item => item.resume.ability)).toEqual(['delayed-discard', 'mist-caller-end']);
     expect(declared.state.priority).toBe(1);
     expect(declared.state.choice).toBeNull();
     const next = applyCommand(declared.state, { id: `end-${declared.state.seq}`, expectedSeq: declared.state.seq,
@@ -162,7 +162,7 @@ describe('End Phase checkpoints', () => {
     ] });
     const before = runEndCheckpoint(h.state, context);
     expect(before).toEqual([]);
-    expect(h.state.choice?.resume).toEqual({ handler: 'rule-checkpoint', step: 'excess-backups', data: { seat: 0 } });
+    expect(h.state.choice?.resume).toMatchObject({ script: 'rules', ability: 'choice-checkpoint', step: 'excess-backups', payload: { seat: 0 } });
     const choice = h.state.choice!;
     const selected = choice.options[0]!;
     const selectedCard = Object.values(h.state.cards).find(card => card.object === selected.id)!;

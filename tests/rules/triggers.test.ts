@@ -39,7 +39,7 @@ describe('automatic abilities', () => {
     expect(state.stack[0]?.targets).toEqual([target.object]);
     for (const seat of [0, 1] as const) {
       const passed = applyCommand(state, { id: `pass-${state.seq}`, expectedSeq: state.seq, seat, intent: { kind: 'pass' } }, engine);
-      expect(passed.ok).toBe(true);
+      expect(passed.ok, JSON.stringify(passed.ok ? null : passed.error)).toBe(true);
       if (!passed.ok) return;
       state = passed.state;
     }
@@ -137,6 +137,28 @@ describe('automatic abilities', () => {
     }
     expect(state.cards[target.instance]!.zone).toBe('deck');
     expect(state.zones[1].deck.at(-1)).toBe(target.instance);
+  });
+
+  it('rejects an opponent-owned Break Zone card before paying Recovery Clerk costs', () => {
+    const h = fixture({ active: 1, priority: 1, placements: [
+      { seat: 1, card: 'P-032R', zone: 'field' }, { seat: 1, card: 'P-029C', zone: 'field' },
+      { seat: 0, card: 'P-003C', zone: 'break' },
+    ] });
+    const source = Object.values(h.state.cards).find(card => card.card === 'P-032R')!;
+    const backup = Object.values(h.state.cards).find(card => card.card === 'P-029C')!;
+    const opponentCard = Object.values(h.state.cards).find(card => card.card === 'P-003C')!;
+    const before = JSON.stringify(h.state);
+    const rejected = applyCommand(h.state, { id: 'clerk-opponent-break-card', expectedSeq: h.state.seq, seat: 1, intent: {
+      kind: 'activate', source: source.object, ability: 'recovery-clerk-action', targets: [opponentCard.object], payment: {
+        discard: [], dullBackups: [backup.object], specialDiscard: null, dullSource: true, sacrificeSource: false,
+        sourceElements: { [backup.object]: 'Water' }, spend: { Water: 1 },
+      },
+    } }, context);
+    expect(rejected).toMatchObject({ ok: false, error: { code: 'ILLEGAL_TARGET' }, events: [] });
+    expect(JSON.stringify(rejected.state)).toBe(before);
+    expect(source.dull).toBe(false);
+    expect(backup.dull).toBe(false);
+    expect(opponentCard.zone).toBe('break');
   });
 
   it('triggers Mist Caller at End Phase and activates the selected Forward', () => {
@@ -295,6 +317,35 @@ describe('automatic abilities', () => {
     requestDeparture(h.state, leaving.instance, 'hand', context);
     expect(h.state.cards[leaving.instance]!.zone).toBe('hand');
     expect(h.state.stack).toHaveLength(0);
+  });
+
+  it('lets Tide Witness observe a Commander return while Cinder Witness requires the Break Zone', () => {
+    const h = fixture({ placements: [
+      { seat: 0, card: 'P-014R', zone: 'field' }, { seat: 1, card: 'P-033R', zone: 'field' },
+      { seat: 1, card: 'P-021L', zone: 'field' }, { seat: 1, card: 'P-023C', zone: 'field' },
+    ] });
+    const commander = h.state.commanders[1].instance;
+    const stolenWitness = Object.values(h.state.cards).find(card => card.card === 'P-014R')!;
+    stolenWitness.controller = 1;
+    requestDeparture(h.state, commander, 'break', context);
+    const choice = h.state.choice!;
+    const returned = applyCommand(h.state, { id: 'trigger-commander-return', expectedSeq: h.state.seq, seat: 1,
+      intent: { kind: 'answer', answer: { choice: choice.id, selected: ['return'], amounts: {} } } }, context);
+    expect(returned.ok).toBe(true);
+    if (!returned.ok) return;
+    expect(returned.state.cards[commander]!.zone).toBe('commander');
+    expect(returned.state.stack.map(item => item.resume.ability)).toEqual(['tide-witness-leave']);
+    expect(returned.state.stack.some(item => item.resume.ability === 'cinder-witness-leave')).toBe(false);
+    let current = returned.state;
+    for (let index = 0; index < 2 && !current.choice; index += 1) {
+      const seat = current.priority!;
+      const passed = applyCommand(current, { id: `return-trigger-pass-${current.seq}`, expectedSeq: current.seq, seat,
+        intent: { kind: 'pass' } }, context);
+      expect(passed.ok, JSON.stringify(passed.ok ? null : passed.error)).toBe(true);
+      if (!passed.ok) return;
+      current = passed.state;
+    }
+    expect(current.choice?.reason).toContain('Tide Witness');
   });
 
   it('uses Night Regent’s last known power when it leaves for the Break Zone', () => {

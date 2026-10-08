@@ -27,12 +27,10 @@ export const card: CardDefinition = {
     {
       "id": "dawn-guardian-replacement",
       "kind": "replacement",
-      "handler": "dawn-guardian-damage",
       "text": "If Dawn Guardian would be dealt damage, reduce that damage by 1000 instead.",
       "ex": false
     }
   ],
-  "summonHandler": null,
   "ex": false,
   "text": "If Dawn Guardian would be dealt damage, reduce that damage by 1000 instead."
 };
