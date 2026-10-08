@@ -16,6 +16,9 @@ test.afterEach(() => {
 
 async function capture(page: Page, info: TestInfo, name: string) {
   const path = info.outputPath(`${name}.png`);
+  if (['idle-table', 'hand-hover', 'stack-state'].includes(name)) {
+    await expect(page.locator('#offline-status')).toHaveText('OFFLINE READY');
+  }
   const screenshot = await page.screenshot({ path, fullPage: true });
   await info.attach(name, { body: screenshot, contentType: 'image/png' });
   if (['idle-table', 'hand-hover', 'stack-state', 'editor-inspection-catalog'].includes(name)) {
