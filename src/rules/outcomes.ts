@@ -1,4 +1,4 @@
-import type { EngineContext, MatchState, Result, Seat } from './types';
+import type { EngineContext, MatchState, Result } from './types';
 
 export function checkOutcomes(state: MatchState, _context: EngineContext): void {
   if (state.result) return;

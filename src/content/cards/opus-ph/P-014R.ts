@@ -1,7 +1,6 @@
 import type { CardDefinition } from '../../../rules/types';
 import type { CardScript } from '../../../rules/contracts/card-script';
 import { z } from 'zod';
-import { controlledForwardLeavesTrigger } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-014R",
@@ -41,8 +40,8 @@ export const card: CardDefinition = {
 export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [{
   id: 'cinder-witness-leave', kind: 'auto', text: card.abilities[0]!.text, ex: false, zones: ['field'],
   cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-  modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
-  triggers: [controlledForwardLeavesTrigger('break')], fieldEffects: [], replacements: [],
+  modes: [], targets: { min: 1, max: 1 },
+  fieldEffects: [], replacements: [],
   steps: { resolve: { payloadSchema: z.null(), run: ({ frame }) => ({ batches: [{ simultaneous: false, operations: [
     { kind: 'forward-damage', source: frame.source, target: frame.targets[0]!, amount: 1000 },
   ] }], choice: null, next: null }) } },

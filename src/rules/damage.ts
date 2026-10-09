@@ -1,4 +1,4 @@
-import type { Catalog, EngineContext, MatchState, ObjectId } from './types';
+import type { EngineContext, MatchState, ObjectId } from './types';
 import { moveCard } from './zones';
 import type { RuleEvent, Seat } from './types';
 

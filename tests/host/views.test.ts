@@ -84,6 +84,8 @@ describe('local host projections', () => {
     const log: RuleEvent[] = [
       { id: 'draw-secret', type: 'card.drawn', data: { seat: 1, card: 'P-031R' } },
       { id: 'draw-own', type: 'card.drawn', data: { seat: 0, card: 'P-003C' } },
+      { id: 'move-secret', type: 'card.moved', data: { owner: 1, controller: 1, object: secret.object,
+        card: 'P-031R', from: 'deck', to: 'hand' } },
     ];
     const view = projectView(h.state, 0, log);
     const text = JSON.stringify(view);
@@ -92,7 +94,11 @@ describe('local host projections', () => {
     expect(text).not.toContain('"resume"');
     expect(text).not.toContain(opponentDeckOrder[0]!);
     expect(view.choice?.options).toEqual([]);
-    expect(view.log.map(entry => entry.id)).toEqual(['draw-own']);
+    expect(view.log.map(entry => entry.id)).toEqual(['draw-secret', 'draw-own', 'move-secret']);
+    expect(view.log[0]).toMatchObject({ type: 'card.drawn', data: { seat: 1 } });
+    expect(JSON.stringify(view.log[0])).not.toContain('P-031R');
+    expect(JSON.stringify(view.log[2])).not.toContain('P-031R');
+    expect(view.log[2]).toMatchObject({ data: { owner: 1, from: 'deck', to: 'hand' } });
     expect(view.deckCounts[1]).toBe(opponentDeckOrder.length);
     const publicView = projectView(h.state, null, log, context);
     const publicText = JSON.stringify(publicView);
@@ -106,6 +112,13 @@ describe('local host projections', () => {
     expect(publicView.castAccess).toEqual([]);
     expect(publicView.actions).toEqual([]);
     expect(publicView.log).toEqual([]);
+  });
+
+  it('does not label setup continuations as resolving stack effects', () => {
+    const host = new LocalHost();
+    host.start(44);
+    expect(host.view(0).resolving).toBeNull();
+    expect(host.view(1).resolving).toBeNull();
   });
 
   it('preserves public damage-zone order while omitting the main-deck order', () => {

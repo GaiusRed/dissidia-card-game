@@ -1,4 +1,4 @@
-import { opusPh } from '../content/opus-ph';
+import { opusPh } from '../content/manifest';
 import { mvpFormat, validateDeck } from '../rules/format';
 import type { CardNumber, DeckList, RuleError } from '../rules/types';
 

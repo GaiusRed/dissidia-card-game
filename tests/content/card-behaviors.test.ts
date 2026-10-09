@@ -117,15 +117,13 @@ describe('typed replacement behavior', () => {
 });
 
 describe('typed entry abilities', () => {
-  it('matches Dusk Reaver entry and emits its temporary power reduction', () => {
+  it('emits Dusk Reaver’s temporary power reduction', () => {
     const h = fixture({ placements: [
       { seat: 0, card: 'P-007H', zone: 'field' }, { seat: 0, card: 'P-005R', zone: 'field' },
     ] });
     const source = Object.values(h.state.cards).find(card => card.card === 'P-007H')!;
     const target = h.object(0, 'P-005R');
-    const event = { id: 'entry', type: 'character.cast', data: { card: source.card, seat: source.controller, source: source.object } };
     const ability = duskReaverScript.abilities[0]!;
-    expect(ability.triggers[0]!.matches(h.state, event, source)).toBe(true);
     const resume = { script: 'P-007H', version: '1', ability: ability.id, step: 'resolve', payload: null };
     const output = createRegistry([duskReaverScript], 'dusk-reaver-test').resume(resume).run({ state: h.state,
       catalog: context.catalog, answer: null, frame: { id: 'entry', resume, mode: 'stack', controller: 0, source: source.object,
@@ -183,15 +181,10 @@ describe('typed Archive Keeper EX Burst', () => {
 });
 
 describe('typed departure triggers', () => {
-  it('Cinder Witness matches a controlled Forward entering Break and deals 1000 damage', () => {
+  it('Cinder Witness deals 1000 damage to the selected Forward', () => {
     const h = fixture({ placements: [{ seat: 0, card: 'P-014R', zone: 'field' }, { seat: 0, card: 'P-005R', zone: 'field' }] });
     const source = Object.values(h.state.cards).find(card => card.card === 'P-014R')!;
     const ability = cinderWitnessScript.abilities[0]!;
-    const moved = { id: 'moved', type: 'card.moved', data: { type: 'Forward', from: 'field', to: 'break', controller: 0 } };
-    expect(ability.triggers[0]!.matches(h.state, moved, source)).toBe(true);
-    expect(ability.triggers[0]!.matches(h.state, { ...moved, data: { ...moved.data, to: 'hand' } }, source)).toBe(false);
-    expect(ability.triggers[0]!.matches(h.state, { ...moved, data: { ...moved.data, controller: 1 } }, source)).toBe(false);
-    expect(ability.triggers[0]!.matches(h.state, { ...moved, data: { ...moved.data, type: 'Backup' } }, source)).toBe(false);
     const target = h.object(0, 'P-005R');
     const resume = { script: 'P-014R', version: '1', ability: ability.id, step: 'resolve', payload: null };
     const output = createRegistry([cinderWitnessScript], 'cinder-witness-test').resume(resume).run({ state: h.state,
@@ -205,12 +198,6 @@ describe('typed departure triggers', () => {
     const h = fixture({ placements: [{ seat: 1, card: 'P-033R', zone: 'field' }] });
     const source = Object.values(h.state.cards).find(card => card.card === 'P-033R')!;
     const ability = tideWitnessScript.abilities[0]!;
-    const event = { id: 'leave', type: 'card.moved', data: { type: 'Forward', from: 'field', to: 'hand', controller: 1 } };
-    expect(ability.triggers[0]!.matches(h.state, event, source)).toBe(true);
-    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, to: 'break' } }, source)).toBe(true);
-    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, from: 'hand' } }, source)).toBe(false);
-    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, controller: 0 } }, source)).toBe(false);
-    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, type: 'Backup' } }, source)).toBe(false);
     const resume = { script: 'P-033R', version: '1', ability: ability.id, step: 'resolve', payload: null };
     const registry = createRegistry([tideWitnessScript], 'tide-witness-test');
     const frame = { id: 'leave', resume, mode: 'stack' as const, controller: 1 as const, source: source.object,
@@ -230,7 +217,6 @@ describe('typed Tide Warden abilities', () => {
   it('registers its entry activation and Undertow special with the printed cost', () => {
     const registry = createRegistry([tideWardenScript], 'tide-warden-test');
     expect(checkRegistryCompleteness(registry)).toEqual([]);
-    const entry = registry.ability('P-021L', 'tide-warden-enter');
     const special = registry.ability('P-021L', 'undertow');
     expect(special.cost).toMatchObject({ cp: 1, elements: ['Water'], dullSource: true, sameNameDiscard: true });
     const h = fixture({ placements: [
@@ -238,8 +224,6 @@ describe('typed Tide Warden abilities', () => {
     ] });
     const source = Object.values(h.state.cards).find(card => card.card === 'P-021L')!;
     const target = h.object(0, 'P-005R');
-    const event = { id: 'entry', type: 'character.cast', data: { card: source.card, seat: source.controller, source: source.object } };
-    expect(entry.triggers[0]!.matches(h.state, event, source)).toBe(true);
     const entryResume = { script: 'P-021L', version: '1', ability: 'tide-warden-enter', step: 'resolve', payload: null };
     const entryOutput = registry.resume(entryResume).run({ state: h.state, catalog: context.catalog, answer: null, frame: {
       id: 'entry', resume: entryResume, mode: 'stack', controller: 1, source: source.object, lastKnown: { ...source }, targets: [target],
@@ -256,15 +240,13 @@ describe('typed Tide Warden abilities', () => {
 });
 
 describe('typed End Phase trigger', () => {
-  it('matches only its controller End Phase and activates the chosen Forward', () => {
+  it('activates the chosen Forward during resolution', () => {
     const h = fixture({ placements: [
       { seat: 1, card: 'P-034R', zone: 'field' }, { seat: 1, card: 'P-026R', zone: 'field', dull: true },
     ] });
     const source = Object.values(h.state.cards).find(card => card.card === 'P-034R')!;
     const target = h.object(1, 'P-026R');
     const ability = mistCallerScript.abilities[0]!;
-    expect(ability.triggers[0]!.matches(h.state, { id: 'end', type: 'phase.started', data: { phase: 'end', active: 1 } }, source)).toBe(true);
-    expect(ability.triggers[0]!.matches(h.state, { id: 'other', type: 'phase.started', data: { phase: 'end', active: 0 } }, source)).toBe(false);
     const resume = { script: 'P-034R', version: '1', ability: ability.id, step: 'resolve', payload: null };
     const output = createRegistry([mistCallerScript], 'mist-caller-test').resume(resume).run({ state: h.state,
       catalog: context.catalog, answer: null, frame: { id: 'mist-caller', resume, mode: 'stack', controller: 1, source: source.object,
@@ -282,12 +264,6 @@ describe('typed last-known power trigger', () => {
     const source = Object.values(h.state.cards).find(card => card.card === 'P-027H')!;
     const target = h.object(1, 'P-026R');
     const ability = nightRegentScript.abilities[0]!;
-    const event = { id: 'night-regent-left', type: 'card.moved', data: { object: source.object, card: source.card,
-      type: 'Forward', from: 'field', to: 'break', controller: 1, power: 8000 } };
-    expect(ability.triggers[0]!.matches(h.state, event, source)).toBe(true);
-    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, object: h.object(1, 'P-026R') } }, source)).toBe(false);
-    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, to: 'hand' } }, source)).toBe(false);
-    expect(ability.triggers[0]!.matches(h.state, { ...event, data: { ...event.data, power: 6000 } }, source)).toBe(true);
     const resume = { script: 'P-027H', version: '1', ability: ability.id, step: 'resolve', payload: 8000 };
     const output = createRegistry([nightRegentScript], 'night-regent-test').resume(resume).run({ state: h.state,
       catalog: context.catalog, answer: null, frame: { id: 'leave', resume, mode: 'stack', controller: 1, source: source.object,

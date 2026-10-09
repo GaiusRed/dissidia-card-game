@@ -5,7 +5,7 @@ import type { ScenarioDefinition } from './types';
 export const scenarioCatalog: readonly ScenarioDefinition[] = [
   {
     id: 'commander-third-cast', version: 2, title: 'Third Commander Cast',
-    purpose: 'Test Commander tax, payment, and a cast from the Commander Zone.', rules: ['FFTCG 11.2', 'Commander format'],
+    purpose: 'Test Commander tax, payment, and a cast from the Command Zone.', rules: ['FFTCG 11.2', 'Commander format'],
     cards: ['P-001L', 'P-005R', 'P-009C', 'P-010C', 'P-011R', 'P-015C', 'P-018R'], expected: ['The Commander costs seven CP.', 'An accepted cast increments the tax count.'],
     fixture: { active: 0, phase: 'main1', commanderCasts: { 0: 2 }, placements: [
       { seat: 0, card: 'P-005R', zone: 'field' }, { seat: 0, card: 'P-009C', zone: 'field' }, { seat: 0, card: 'P-010C', zone: 'field' },
@@ -40,10 +40,11 @@ export const scenarioCatalog: readonly ScenarioDefinition[] = [
   {
     id: 'battlefield-card-status', version: 2, title: 'Battlefield Card Status',
     purpose: 'Inspect damaged, frozen Forwards and Dull Backups from either player view.', rules: ['FFTCG 10.4', 'FFTCG 12.1'],
-    cards: ['P-003C', 'P-009C', 'P-023C', 'P-033R'],
+    cards: ['P-003C', 'P-009C', 'P-015C', 'P-023C', 'P-033R'],
     expected: ['Damage, Freeze, and readiness are visible on card inspection.', 'Controller rows retain their seat identity when the view changes.'],
     fixture: { active: 0, phase: 'main1', placements: [
       { seat: 0, card: 'P-003C', zone: 'field', damage: 1, frozen: true }, { seat: 0, card: 'P-009C', zone: 'field', dull: true },
+      { seat: 0, card: 'P-015C', zone: 'damage' },
       { seat: 1, card: 'P-023C', zone: 'field', damage: 2 }, { seat: 1, card: 'P-033R', zone: 'field', dull: true },
     ] },
   },

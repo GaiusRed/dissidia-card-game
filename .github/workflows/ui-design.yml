@@ -2,12 +2,27 @@ name: UI design acceptance
 
 on:
   push:
-  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  core:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run check:boundaries
+      - run: npm test
+
   playwright-ui-design:
     runs-on: windows-2022
     timeout-minutes: 15
@@ -19,7 +34,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install chromium
-      - run: npm run test:ui-design
+      - run: npm run build
+      - run: npm run test:e2e
+      - run: npx playwright test --config playwright.ui-design.config.ts
+      - run: npm run test:release
       - name: Upload UI design evidence
         if: always()
         uses: actions/upload-artifact@v4

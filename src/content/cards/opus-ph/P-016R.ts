@@ -32,8 +32,8 @@ export const script: CardScript = {
   abilities: [{
     id: 'twin-embers', kind: 'summon', text: card.text, ex: false, zones: ['hand'],
     cost: { cp: card.cost, elements: card.elements, dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-    modes: [], targets: { min: 2, max: 2, distinct: true, accepts: () => true },
-    triggers: [], fieldEffects: [], replacements: [],
+    modes: [], targets: { min: 2, max: 2 },
+    fieldEffects: [], replacements: [],
     steps: { resolve: {
       payloadSchema: z.null(),
       run: ({ frame }) => ({ batches: [{ simultaneous: true, operations: frame.targets.map(target => ({

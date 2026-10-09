@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { opusPh } from '../../src/content/opus-ph';
-import { cinderCompany, tidalAssembly } from '../../src/content/decks';
+import { addPower, changeControl, effectivePower, expireTurnEffects, recomputeControl, setPower } from '../../src/rules/continuous';
+import { opusPh } from '../../src/content/manifest';
 import { assertInvariants } from '../../src/rules/invariants';
 import { nextRandom, shuffle } from '../../src/rules/random';
 import { moveCard } from '../../src/rules/zones';
-import { addPower, changeControl, effectivePower, expireTurnEffects, recomputeControl, setPower } from '../../src/rules/continuous';
 import { context, fixture } from '../support/harness';
 
 describe('deterministic match state', () => {

@@ -2,7 +2,6 @@ import type { CardDefinition } from '../../../rules/types';
 import type { CardScript } from '../../../rules/contracts/card-script';
 import type { ResolutionContext, ResumeRef } from '../../../rules/contracts/execution';
 import { z } from 'zod';
-import { controlledForwardLeavesTrigger } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-033R",
@@ -41,8 +40,8 @@ const tideWitnessResume: ResumeRef = { script: 'P-033R', version: '1', ability: 
 export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [{
   id: 'tide-witness-leave', kind: 'auto', text: card.abilities[0]!.text, ex: false, zones: ['field'],
   cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-  modes: [], targets: { min: 0, max: 0, distinct: true, accepts: () => true },
-  triggers: [controlledForwardLeavesTrigger()], fieldEffects: [], replacements: [],
+  modes: [], targets: { min: 0, max: 0 },
+  fieldEffects: [], replacements: [],
   steps: {
     resolve: { payloadSchema: z.null(), run: ({ frame }) => ({ batches: [], choice: { seat: frame.controller,
       kind: 'confirm', reason: 'Tide Witness: you may draw 1 card.',

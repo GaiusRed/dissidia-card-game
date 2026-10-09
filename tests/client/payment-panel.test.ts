@@ -8,6 +8,7 @@ const model: PaymentPanelModel = {
     { object: 'backup-1', label: 'Banner & Guard', element: 'Fire', kind: 'backup', selected: true },
     { object: 'discard-1', label: 'Coal Tender', element: 'Fire', kind: 'discard', selected: false },
   ],
+  excludedPaymentCards: ['Dusk Reaver'],
   specialOptions: [{ object: 'special-1', label: 'Cinder Marshal' }], specialDiscard: 'special-1',
 };
 
@@ -18,8 +19,8 @@ describe('payment panel renderer', () => {
     expect(html).toContain('Generated 4 · Spent 3 · Remainder 1');
     expect(html).toContain('Dull source');
     expect(html).toContain('Sacrifice source');
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain('Selected: Backup · Banner &amp; Guard');
+    expect(html).toContain('Dusk Reaver cannot be discarded for CP (FFTCG 5.2.1.3).');
   });
 
   it('escapes catalog labels and explains an incomplete payment', () => {

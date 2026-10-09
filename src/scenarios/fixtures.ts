@@ -1,5 +1,5 @@
 import { cinderCompany, tidalAssembly } from '../content/decks';
-import { opusPh } from '../content/opus-ph';
+import { opusPh } from '../content/manifest';
 import { mvpFormat } from '../rules/format';
 import { assertInvariants } from '../rules/invariants';
 import { createMatch } from '../rules/setup';

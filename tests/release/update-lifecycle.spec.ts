@@ -64,7 +64,7 @@ test('keeps an active match on build A across a waiting update and offline all-t
   await expect.poll(() => activeWorkerBuild(reopened)).toBe('release-B');
 });
 
-test('recovers a card-driven Commander choice on build A while build B waits offline', async ({ page, context }) => {
+test('recovers a Commander destination choice on build A while build B waits offline', async ({ page, context }) => {
   await page.request.post('/__test/switch?build=A');
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-client-build', 'release-A');
@@ -76,12 +76,10 @@ test('recovers a card-driven Commander choice on build A while build B waits off
   await tide.click();
   await page.getByRole('button', { name: 'Review Summon · 2 CP', exact: true }).click();
   await commander.click();
-  await page.getByRole('button', { name: /Backup · Tide Witness · Water/ }).click();
+  await page.locator('.card[data-payment-option]').filter({ hasText: 'Tide Witness' }).click();
   await page.getByRole('button', { name: 'Confirm Summon · 2 CP', exact: true }).click();
-  await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
-  await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
   const choice = page.getByRole('region', { name: 'Required choice' });
-  await expect(choice).toContainText('Commander');
+  await expect(choice).toContainText('Commander', { timeout: 10_000 });
 
   await page.request.post('/__test/switch?build=B');
   await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.update());
@@ -96,7 +94,7 @@ test('recovers a card-driven Commander choice on build A while build B waits off
   await expect(page.locator('html')).toHaveAttribute('data-client-build', 'release-A');
   await expect(page.getByRole('region', { name: 'Required choice' })).toContainText('Commander');
   expect(await activeWorkerBuild(page)).toBe('release-A');
-  await page.getByRole('button', { name: /Commander Zone/ }).click();
+  await page.getByRole('button', { name: 'Return to Command Zone' }).click();
   await expect(page.getByRole('region', { name: 'Required choice' })).toHaveCount(0);
   await expect(page.locator('[data-table-instance]').filter({ hasText: 'Cinder Marshal' })).toHaveAttribute('data-zone', 'commander');
 

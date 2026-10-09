@@ -108,7 +108,8 @@ export function passPriority(state: MatchState, context: EngineContext): RuleEve
       remaining: [], returnWindow: { kind: 'priority', seat: state.active }, operationIndex: 0, scriptComplete: false,
     });
     state.priority = state.choice ? null : state.active;
-    events.push(event(state, 'stack.resolved', { item: item.id, ability: item.resume.ability }));
+    events.push(event(state, 'stack.resolved', { item: item.id, source: item.source, card: item.lastKnown.card, controller: item.controller,
+      targets: [...item.targets], ability: item.resume.ability }));
     return events;
   }
   if (state.phase === 'attack' && state.combat) {

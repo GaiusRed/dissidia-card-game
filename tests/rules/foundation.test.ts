@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cinderCompany, tidalAssembly } from '../../src/content/decks';
-import { opusPh } from '../../src/content/opus-ph';
+import { opusPh } from '../../src/content/manifest';
 import { applyCommand } from '../../src/rules/engine';
 import { mvpFormat } from '../../src/rules/format';
 import { createMatch } from '../../src/rules/setup';

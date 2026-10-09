@@ -23,12 +23,18 @@ export function projectView(state: MatchState, seat: Seat | null = null, log: Ru
     ? (({ resume: _resume, ...publicChoice }) => publicChoice)(pending)
     : pending ? { ...(({ resume: _resume, ...publicChoice }) => publicChoice)(pending),
       reason: `Player ${pending.seat + 1} is making a private choice.`, options: [] } : null;
-  const safeLog = log.filter(item => {
-    if (seat === null) return !['card.drawn', 'card.searched'].includes(item.type);
-    if (!['card.drawn', 'card.searched'].includes(item.type)) return true;
+  const safeLog = seat === null ? [] : log.map(item => {
     const data = item.data && typeof item.data === 'object' && !Array.isArray(item.data)
       ? item.data as Record<string, unknown> : {};
-    return data.seat === seat;
+    const eventSeat = typeof data.seat === 'number' ? data.seat
+      : typeof data.owner === 'number' ? data.owner : typeof data.controller === 'number' ? data.controller : undefined;
+    const isOpponent = eventSeat !== undefined && eventSeat !== seat;
+    if (!isOpponent) return item;
+    if (['card.drawn', 'card.searched'].includes(item.type)) return { ...item, data: { seat: data.seat } };
+    if (item.type === 'card.moved' && (data.to === 'hand' || data.to === 'deck')) {
+      return { ...item, data: { owner: data.owner, controller: data.controller, from: data.from, to: data.to } };
+    }
+    return item;
   });
   const traySeat = seat ?? state.choice?.seat ?? state.priority ?? state.active;
   const castAccess = context && seat !== null ? describeCastAccess(state, traySeat, context) : [];
@@ -56,8 +62,7 @@ export function projectView(state: MatchState, seat: Seat | null = null, log: Ru
   const handTray = context && seat !== null ? state.zones[traySeat].hand.map(instance => visibleTrayCard(instance, 'hand'))
     .filter((item): item is TrayCard => item !== null) : [];
   const commanderInstance = state.commanders[traySeat].instance;
-  const resolvingFrame = state.execution.frames.find(frame => frame.mode === 'stack')
-    ?? [...state.execution.frames].reverse().find(frame => frame.mode === 'ex' || frame.mode === 'rule');
+  const resolvingFrame = [...state.execution.frames].reverse().find(frame => frame.mode === 'stack');
   const resolvingCard = !resolvingFrame ? state.stackCards.map(instance => state.cards[instance])
     .find(card => card?.zone === 'stack' && !state.stack.some(item => item.source === card.object)) : undefined;
   const commanderTray = seat !== null && state.cards[commanderInstance]?.zone === 'commander'

@@ -14,12 +14,9 @@
     "test:ui-design": "npm run build && playwright test --config playwright.ui-design.config.ts",
     "test:release": "node scripts/test-release.mjs",
     "test:ui-design:report": "playwright show-report playwright-report/ui-design",
-    "check:boundaries": "node scripts/check-boundaries.mjs",
-    "check:coverage": "node scripts/check-coverage.mjs",
-    "test:coverage-matrix": "node scripts/run-coverage-matrix.mjs"
+    "check:boundaries": "node scripts/check-boundaries.mjs"
   },
   "dependencies": {
-    "phaser": "4.2.1",
     "workbox-core": "7.4.1",
     "workbox-precaching": "7.4.1",
     "workbox-routing": "7.4.1",

@@ -409,7 +409,7 @@ describe('sequential combat', () => {
       { [first.object]: 2000, [second.object]: 1000, unknown: 0 },
     ];
     const before = JSON.stringify(state);
-    for (const [index, amounts] of invalid.entries()) {
+    for (const amounts of invalid) {
       const rejected = issue(state, 1, { kind: 'answer', answer: { choice: pending.id, selected: [], amounts } } as never);
       expect(rejected.ok).toBe(false);
     }

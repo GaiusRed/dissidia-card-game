@@ -103,7 +103,7 @@ export function applyOperation(state: MatchState, operation: Operation, context:
           source: operation.source, object: target.object, value: operation.value, expiresTurn: operation.expiresTurn });
         else addEffect(state, { kind: 'power-modifier', controller: state.active,
           source: operation.source, object: target.object, amount: operation.value, expiresTurn: operation.expiresTurn });
-        events.push(event(state, 'power.changed', { object: target.object, mode: operation.mode, value: operation.value }));
+        events.push(event(state, 'power.changed', { source: operation.source, object: target.object, mode: operation.mode, value: operation.value }));
         break;
       }
       case 'keyword': {

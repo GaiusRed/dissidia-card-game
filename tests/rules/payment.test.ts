@@ -188,8 +188,8 @@ describe('CP payment', () => {
     const commanderScript: CardScript = { metadata: { ...commanderDefinition, abilities: [sacrificeAbility] }, behaviorVersion: '1', abilities: [{
       id: sacrificeAbility.id, kind: sacrificeAbility.kind, text: sacrificeAbility.text, ex: false, zones: ['field'],
       cost: { cp: 1, elements: ['Fire'], dullSource: false, sacrificeSource: true, sameNameDiscard: false },
-      modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
-      triggers: [], fieldEffects: [], replacements: [],
+      modes: [], targets: { min: 1, max: 1 },
+      fieldEffects: [], replacements: [],
       steps: { resolve: { payloadSchema: z.null(), run: () => ({ batches: [], choice: null, next: null }) } },
     }] };
     const registry = createRegistry([...opusPhRegisteredScripts.filter(script => script.metadata.number !== 'P-001L'), commanderScript], 'sacrifice-commander-test');

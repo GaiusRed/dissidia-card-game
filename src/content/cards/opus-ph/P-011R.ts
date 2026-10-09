@@ -2,7 +2,6 @@ import type { CardDefinition } from '../../../rules/types';
 import type { CardScript } from '../../../rules/contracts/card-script';
 import type { ResolutionContext, ResumeRef } from '../../../rules/contracts/execution';
 import { z } from 'zod';
-import { selfEntryTrigger } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-011R",
@@ -41,8 +40,8 @@ const quartermasterResume: ResumeRef = { script: 'P-011R', version: '1', ability
 export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [{
   id: 'quartermaster-enter', kind: 'auto', text: card.abilities[0]!.text, ex: false, zones: ['field'],
   cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-  modes: [], targets: { min: 0, max: 0, distinct: true, accepts: () => true },
-  triggers: [selfEntryTrigger], fieldEffects: [], replacements: [],
+  modes: [], targets: { min: 0, max: 0 },
+  fieldEffects: [], replacements: [],
   steps: {
     resolve: { payloadSchema: z.null(), run: ({ state, frame, catalog }: ResolutionContext) => {
       const options = state.zones[frame.controller].deck.map(instance => state.cards[instance]!)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cinderCompany } from '../../src/content/decks';
-import { opusPh } from '../../src/content/opus-ph';
+import { opusPh } from '../../src/content/manifest';
 import type { CardDefinition, Catalog, DeckList } from '../../src/rules/types';
 import { mvpFormat, productionFormat, validateDeck } from '../../src/rules/format';
 

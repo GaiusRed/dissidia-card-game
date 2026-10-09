@@ -33,8 +33,8 @@ function card(number: string, abilitySteps: Record<string, ResumeStep> = {}): Ca
       dullSource: printed.activation.dullSource, sacrificeSource: printed.activation.sacrificeSource,
       sameNameDiscard: printed.activation.specialDiscardName !== null }
       : { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-    modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
-    triggers: [], fieldEffects: [], replacements: [], steps: abilitySteps,
+    modes: [], targets: { min: 1, max: 1 },
+    fieldEffects: [], replacements: [], steps: abilitySteps,
   }));
   return { metadata, behaviorVersion: '1', abilities };
 }

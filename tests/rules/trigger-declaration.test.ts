@@ -149,8 +149,8 @@ describe('trigger declaration', () => {
     const selfBreakScript: CardScript['abilities'][number] = {
       id: 'test-self-break', kind: 'auto', text, ex: false, zones: ['field'],
       cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-      modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
-      triggers: [], fieldEffects: [], replacements: [],
+      modes: [], targets: { min: 1, max: 1 },
+      fieldEffects: [], replacements: [],
       steps: { resolve: { payloadSchema: z.number().int().nonnegative(), run: ({ frame }) => ({
         batches: [{ simultaneous: false, operations: [{ kind: 'forward-damage', source: frame.source, target: frame.targets[0]!, amount: 1000 }] }],
         choice: null, next: null,

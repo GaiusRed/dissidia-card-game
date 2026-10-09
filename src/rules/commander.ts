@@ -31,7 +31,7 @@ export function requestDeparture(state: MatchState, instance: InstanceId, destin
   openRuleChoice(state, { seat: card.owner, kind: 'confirm',
     reason: 'Choose where your Commander goes as it leaves the field.',
     options: [
-      { id: 'return', label: 'Return to Commander Zone', object: card.object },
+      { id: 'return', label: 'Return to Command Zone', object: card.object },
       { id: 'destination', label: 'Use normal destination', object: card.object },
     ],
     min: 1, max: 1, allocation: null,

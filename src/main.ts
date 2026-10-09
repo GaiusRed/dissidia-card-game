@@ -1,13 +1,12 @@
-import Phaser from 'phaser';
 import './styles.css';
 import './client/theme.css';
 import { CLIENT_BUILD_ID } from './app-build';
-import { opusPh } from './content/opus-ph';
-import { opusPhRegistry } from './content/manifest';
+import { opusPh, opusPhRegistry } from './content/manifest';
 import { LocalHost } from './host/local-host';
 import { registerOffline, type OfflineStatus } from './client/offline';
 import { homeMenu } from './client/menu';
 import { MatchController } from './client/match-controller';
+import { chooseSmartPriorityAction, type SmartPriorityReason } from './client/priority-policy';
 import { computeTableLayout } from './client/table/layout';
 import { applyEventMotion, eventMotionMarkers, type EventMotionMarker } from './client/table/animation';
 import { beginHandGesture, cancelHandGesture, endHandGesture, moveHandGesture, type HandGesture } from './client/table/gestures';
@@ -20,33 +19,6 @@ import { loadDecks, saveDeck, type SavedDeck } from './storage/decks';
 import type { DeckList, Element, Intent, ObjectId, Payment, PaymentOffer, Seat } from './rules/types';
 import type { MatchView } from './host/protocol';
 
-class Playmat extends Phaser.Scene {
-  constructor() { super('playmat'); }
-  create() {
-    const paint = () => {
-      this.children.removeAll();
-      const { width, height } = this.scale;
-      const layout = computeTableLayout(width, height);
-      const g = this.add.graphics();
-      g.fillGradientStyle(0xf7f5ef, 0xf7f5ef, 0xeaf2fa, 0xeaf2fa, 1);
-      g.fillRect(0, 0, width, height);
-      g.lineStyle(1, 0x235d88, 0.11);
-      g.strokeRoundedRect(layout.field.x + width * 0.1, layout.field.y + 4,
-        width * 0.8, Math.max(0, layout.field.height - 8), 32);
-      g.lineStyle(1, 0x235d88, 0.06);
-      const forwardLine = (layout.rows.opponentForwards.y + layout.rows.opponentForwards.height +
-        layout.rows.yourForwards.y) / 2;
-      g.lineBetween(layout.rows.opponentForwards.x, forwardLine,
-        layout.rows.opponentForwards.x + layout.rows.opponentForwards.width, forwardLine);
-      g.fillStyle(0x9b6a25, 0.06);
-      g.fillCircle(width / 2, layout.field.y + layout.field.height / 2, Math.min(width, layout.field.height) * 0.15);
-    };
-    paint();
-    this.scale.on('resize', paint);
-  }
-}
-
-const game = new Phaser.Game({ type: Phaser.CANVAS, parent: 'game-canvas', backgroundColor: '#f7f5ef', scene: [Playmat], scale: { mode: Phaser.Scale.RESIZE } });
 const host = new LocalHost();
 const root = document.querySelector<HTMLElement>('#app')!;
 document.documentElement.dataset.clientBuild = CLIENT_BUILD_ID;
@@ -69,6 +41,8 @@ window.addEventListener('resize', syncTableLayout);
 let inspectedSeat: Seat = 0;
 let notice = '';
 let selectedObject: ObjectId | null = null;
+let enlargedObject: ObjectId | null = null;
+let openPublicZone: { seat: Seat; zone: 'deck' | 'break' | 'damage' | 'removed' } | null = null;
 let orderSelection: string[] = [];
 let choiceSelection: string[] = [];
 let allocationDraft: Record<string, number> = {};
@@ -82,6 +56,15 @@ let handPointer: { pointerId: number; instance: string; object: ObjectId; owner:
 let suppressCardClick: ObjectId | null = null;
 let suppressCardClickUntil = 0;
 const handOrders = new Map<Seat, ObjectId[]>();
+const automaticEventIds = new Set<string>();
+let autoScheduledKey: string | null = null;
+function restorePriorityHolds(): Record<Seat, boolean> {
+  try {
+    const value = JSON.parse(localStorage.getItem('dissidia-priority-holds') ?? '{}') as Record<string, unknown>;
+    return { 0: value['0'] === true, 1: value['1'] === true };
+  } catch { return { 0: false, 1: false }; }
+}
+const priorityHolds = restorePriorityHolds();
 let abilityDraft: { source: ObjectId; abilityId: string } | null = null;
 let actionDraft: ActionDraft | null = null;
 let paymentChoices: PaymentSourceChoice[] = [];
@@ -101,6 +84,8 @@ let recoveryWarning: string | null = null;
 let restoreComplete = false;
 let applyUpdate: () => void = () => {};
 let commandPending = false;
+let autoBurstCount = 0;
+let autoBudgetPaused = false;
 let pendingEventMotion: EventMotionMarker[] = [];
 let matchController: MatchController | null = null;
 
@@ -194,16 +179,39 @@ function nameOf(state: MatchView, instance: string): string {
 }
 function eventText(event: import('./rules/types').RuleEvent): string {
   const data = event.data && typeof event.data === 'object' && !Array.isArray(event.data) ? event.data as Record<string, unknown> : {};
-  if (event.type === 'priority.passed') return `Player ${Number(data.seat) + 1} passed priority.`;
-  if (event.type === 'phase.started') return `${String(data.phase)} Phase started.`;
-  if (event.type === 'character.cast') return `${opusPh[String(data.card)]?.name ?? data.card} entered the field.`;
-  if (event.type === 'summon.cast') return `${opusPh[String(data.card)]?.name ?? data.card} was cast.`;
+  const actor = typeof data.seat === 'number' ? `Player ${data.seat + 1}` : 'The game';
+  const objectName = (id: unknown): string => {
+    if (typeof id !== 'string') return 'a card';
+    const view = host.view(0);
+    const card = Object.values(view.cards).find(item => item.object === id);
+    return card ? nameOf(view, card.instance) : 'a card';
+  };
+  if (event.type === 'priority.passed') return `${actor} passed priority${automaticEventIds.has(event.id) ? ' [Smart Priority]' : ''}.`;
+  if (event.type === 'combat.block-declined') return automaticEventIds.has(event.id) ? `${actor} had no legal blocker; combat proceeds.` : `${actor} declined to block.`;
+  if (event.type === 'phase.started') return `Turn ${String(data.turn)} | Player ${Number(data.active) + 1} | ${String(data.phase)} Phase.`;
+  if (event.type === 'character.cast') return `${actor} played ${opusPh[String(data.card)]?.name ?? data.card}.`;
+  if (event.type === 'summon.cast') return `${actor} cast ${opusPh[String(data.card)]?.name ?? data.card}.`;
   if (event.type === 'summon.resolved') return `${opusPh[String(data.card)]?.name ?? data.card} resolved.`;
-  if (event.type === 'player.damaged') return `Player ${Number(data.seat) + 1} took damage.`;
-  if (event.type === 'forward.broken') return `${opusPh[String(data.card)]?.name ?? 'Forward'} was broken.`;
-  if (event.type === 'card.activated') return 'A card became Active.';
-  if (event.type === 'card.discarded') return 'A card was discarded for CP.';
-  if (event.type === 'game.conceded') return `Player ${Number(data.seat) + 1} conceded.`;
+  if (event.type === 'player.damaged') return `${actor} took damage; ${opusPh[String(data.card)]?.name ?? 'a card'} entered their Damage Zone.`;
+  if (event.type === 'card.drawn') return `${actor} drew a card.`;
+  if (event.type === 'card.discarded' || event.type === 'card.discarded-for-special') return `${actor} discarded ${opusPh[String(data.card)]?.name ?? data.card} to pay a cost.`;
+  if (event.type === 'choice.answered') return `${actor} answered a required choice.`;
+  if (event.type === 'stack.resolved') return `Player ${Number(data.controller) + 1}'s ${opusPh[String(data.card)]?.name ?? objectName(data.source)} began resolving.`;
+  if (event.type === 'stack.effect-completed') {
+    const targets = Array.isArray(data.targets) ? data.targets.map(objectName).join(', ') : '';
+    return `${opusPh[String(data.card)]?.name ?? objectName(data.source)}'s effect finished${targets ? ` (targets: ${targets})` : ''}.`;
+  }
+  if (event.type === 'power.changed') return `${objectName(data.source)} changed ${objectName(data.object)}'s power by ${String(data.value)}.`;
+  if (event.type === 'forward.damaged') return `${objectName(data.source)} dealt ${String(data.amount)} damage to ${objectName(data.target)}.`;
+  if (event.type === 'combat.attack-declared') return `${actor} attacked with ${Array.isArray(data.attackers) ? data.attackers.map(objectName).join(', ') : 'Forwards'}.`;
+  if (event.type === 'combat.block-declared') return `${actor} blocked with ${objectName(data.blocker)}.`;
+  if (event.type === 'combat.blockers-opened') return `Player ${Number(data.seat) + 1} may block.`;
+  if (event.type === 'combat.damage-allocated') return 'Combat damage was assigned.';
+  if (event.type === 'card.status-changed') return `${objectName(data.object)} changed status.`;
+  if (event.type === 'keyword.granted') return `${objectName(data.object)} gained ${String(data.keyword)}.`;
+  if (event.type === 'card.moved') return `${objectName(data.object)} moved from ${String(data.from)} to ${String(data.to)}.`;
+  if (event.type === 'card.activated') return `${actor}'s cards became Active.`;
+  if (event.type === 'game.conceded') return `${actor} conceded.`;
   if (event.type === 'game.result') return 'The duel ended.';
   return event.type.replaceAll('.', ' ').replaceAll('-', ' ');
 }
@@ -254,8 +262,9 @@ function makePayment(state: MatchView, seat: Seat, source: ObjectId, cost: numbe
     sourceElements: Object.fromEntries(selected.map(item => [item.object, item.element])), spend,
   };
 }
-async function command(seat: Seat, intent: Intent, view: MatchView): Promise<void> {
+async function command(seat: Seat, intent: Intent, view: MatchView, autoReason: SmartPriorityReason | null = null): Promise<void> {
   if (commandPending) return;
+  if (!autoReason) { autoBurstCount = 0; autoBudgetPaused = false; autoScheduledKey = null; }
   commandPending = true;
   root.inert = true;
   try {
@@ -264,6 +273,10 @@ async function command(seat: Seat, intent: Intent, view: MatchView): Promise<voi
     } });
     notice = reply.ok ? '' : reply.error.message;
     if (reply.ok) {
+      if (autoReason) {
+        autoBurstCount += 1;
+        for (const event of reply.events) automaticEventIds.add(event.id);
+      }
       pendingEventMotion = eventMotionMarkers(reply.events);
       selectedObject = null; orderSelection = []; choiceSelection = []; allocationDraft = {}; partyDraft = [];
       castingSource = null; abilityDraft = null; targetSelection = []; selectedMode = null;
@@ -278,6 +291,32 @@ async function command(seat: Seat, intent: Intent, view: MatchView): Promise<voi
     applyEventMotion(root, pendingEventMotion);
     pendingEventMotion = [];
   }
+}
+function scheduleSmartPriority(view: MatchView): void {
+  const paused = screen !== 'home' || enlargedObject !== null || openPublicZone !== null || actionDraft !== null || handPointer !== null || commandPending;
+  if (paused) { autoScheduledKey = null; return; }
+  if (autoBudgetPaused) return;
+  if (autoBurstCount >= 32) {
+    autoBudgetPaused = true;
+    notice = 'Smart priority paused after 32 automatic actions.';
+    window.setTimeout(render, 0);
+    return;
+  }
+  const seat = view.priority;
+  if (seat === null) { autoScheduledKey = null; return; }
+  const decision = chooseSmartPriorityAction(view, priorityHolds[seat]);
+  if (!decision) { autoScheduledKey = null; return; }
+  const key = `${view.generation}:${view.seq}:${seat}:${decision.reason}`;
+  if (autoScheduledKey === key) return;
+  autoScheduledKey = key;
+  window.setTimeout(() => {
+    if (commandPending) return;
+    let latest: MatchView;
+    try { latest = host.view(seat); } catch { return; }
+    const current = chooseSmartPriorityAction(latest, priorityHolds[seat], screen !== 'home' || enlargedObject !== null || openPublicZone !== null || actionDraft !== null || handPointer !== null || commandPending);
+    if (!current || latest.generation !== view.generation || latest.seq !== view.seq || latest.priority !== seat) return;
+    void command(seat, current.intent, latest, current.reason);
+  }, 180);
 }
 function startActionDraft(state: MatchView, seat: Seat, offerId: string, source: ObjectId, ability: string | null): boolean {
   const offer = state.actions.find(item => item.id === offerId)?.payment;
@@ -394,14 +433,6 @@ function drawTargeting(): void {
   root.insertAdjacentHTML('beforeend', `<svg class="targeting-overlay" width="${bounds.width}" height="${bounds.height}" aria-hidden="true">${lines}${current}</svg>`);
 }
 
-function editorCardRow(number: string, action: 'add' | 'remove'): string {
-  const card = opusPh[number]!;
-  const actionControl = action === 'add'
-    ? `<button data-add="${number}" aria-label="Add ${card.name}" ${editorDeck.main.includes(number) || editorDeck.main.length >= 19 ? 'disabled' : ''}>+</button>`
-    : `<button data-remove="${number}" aria-label="Remove ${card.name}">−</button>`;
-  return `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><button class="editor-inspect-link" data-inspect="${number}" aria-label="Inspect ${card.name}">${card.name}</button><small>${number} · ${card.type} · ${card.cost}</small>${actionControl}</div>`;
-}
-
 function renderDeckEditor(): void {
   const priorSearch = root.querySelector<HTMLInputElement>('#editor-search');
   const restoreSearchFocus = priorSearch === document.activeElement;
@@ -416,7 +447,8 @@ function renderDeckEditor(): void {
   const commanderOptions = Object.values(opusPh).filter(card => card.type === 'Forward' && card.rarity === 'L');
   const errors = editorValidation(editorDeck);
   const inspectCard = editorInspection ? opusPh[editorInspection] : undefined;
-  root.innerHTML = `<section class="editor-page"><header class="editor-header"><button class="top-button" id="editor-back">← Menu</button><div><p class="eyebrow">COMMANDER DUEL · OPUS PLACEHOLDER</p><h2>Deck editor</h2></div><span class="deck-count">${editorDeck.main.length} / 19</span></header><div class="editor-toolbar"><label>PLAYER <select id="editor-seat"><option value="0" ${editorSeat === 0 ? 'selected' : ''}>1</option><option value="1" ${editorSeat === 1 ? 'selected' : ''}>2</option></select></label><label>COMMANDER <select id="editor-commander">${commanderOptions.map(card => `<option value="${card.number}" ${editorDeck.commander === card.number ? 'selected' : ''}>${card.name} · ${card.elements.join('/')}</option>`).join('')}</select></label><button class="primary small" id="save-deck" ${errors.length ? 'disabled' : ''}>Save for Player ${editorSeat + 1}</button></div><p class="editor-error" role="status">${editorError || errors.map(error => error.message).join(' ')}</p><div class="editor-toolbar editor-filters"><label>SEARCH <input id="editor-search" value="${editorQuery.replaceAll('"', '&quot;')}" placeholder="Card name or number" /></label><label>TYPE <select id="editor-type"><option value="all">All types</option><option>Forward</option><option>Backup</option><option>Summon</option></select></label><label>ELEMENT <select id="editor-element"><option value="all">All elements</option><option>Fire</option><option>Ice</option><option>Wind</option><option>Earth</option><option>Lightning</option><option>Water</option><option>Light</option><option>Dark</option></select></label></div><div class="editor-columns"><section><h3>Main deck <small>${editorDeck.main.length}/19</small></h3><div class="editor-list">${editorDeck.main.map(number => { const card = opusPh[number]!; return `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong class="editor-inspect" tabindex="0" role="button" aria-label="Inspect ${card.name}">${card.name}</strong><small>${number} · ${card.type} · ${card.cost}</small><button data-remove="${number}" aria-label="Remove ${card.name}">−</button></div>`; }).join('') || '<p class="subtle">Add cards from the catalog.</p>'}</div></section><section><h3>Card catalog <small>${pool.length} matching cards</small></h3><div class="editor-list">${pool.map(card => `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong class="editor-inspect" tabindex="0" role="button" aria-label="Inspect ${card.name}">${card.name}</strong><small>${card.number} · ${card.type} · ${card.cost}</small><button data-add="${card.number}" aria-label="Add ${card.name}" ${editorDeck.main.includes(card.number) || editorDeck.main.length >= 19 ? 'disabled' : ''}>+</button></div>`).join('')}</div></section></div>${inspectCard ? `<aside class="editor-inspection" role="region" aria-label="Card inspection"><div><p class="eyebrow">${inspectCard.number} · ${inspectCard.type} · ${inspectCard.elements.join(' / ')} · COST ${inspectCard.cost}${inspectCard.power === null ? '' : ` · ${inspectCard.power} POWER`}</p><h3>${inspectCard.name}</h3><p>${inspectCard.text}</p><small>${inspectCard.jobs.join(' · ')}${inspectCard.keywords.length ? ` · ${inspectCard.keywords.join(' · ')}` : ''}</small></div><button class="top-button" id="close-editor-inspection" aria-label="Close card inspection">Close</button></aside>` : ''}</section>`;
+  const inspectionText = inspectCard?.abilities.map(ability => ability.text.trim()).filter(Boolean).join(' ') ?? '';
+  root.innerHTML = `<section class="editor-page"><header class="editor-header"><button class="top-button" id="editor-back">← Menu</button><div><p class="eyebrow">COMMANDER DUEL · OPUS PLACEHOLDER</p><h2>Deck editor</h2></div><span class="deck-count">${editorDeck.main.length} / 19</span></header><div class="editor-toolbar"><label>PLAYER <select id="editor-seat"><option value="0" ${editorSeat === 0 ? 'selected' : ''}>1</option><option value="1" ${editorSeat === 1 ? 'selected' : ''}>2</option></select></label><label>COMMANDER <select id="editor-commander">${commanderOptions.map(card => `<option value="${card.number}" ${editorDeck.commander === card.number ? 'selected' : ''}>${card.name} · ${card.elements.join('/')}</option>`).join('')}</select></label><button class="primary small" id="save-deck" ${errors.length ? 'disabled' : ''}>Save for Player ${editorSeat + 1}</button></div><p class="editor-error" role="status">${editorError || errors.map(error => error.message).join(' ')}</p><div class="editor-toolbar editor-filters"><label>SEARCH <input id="editor-search" value="${editorQuery.replaceAll('"', '&quot;')}" placeholder="Card name or number" /></label><label>TYPE <select id="editor-type"><option value="all">All types</option><option>Forward</option><option>Backup</option><option>Summon</option></select></label><label>ELEMENT <select id="editor-element"><option value="all">All elements</option><option>Fire</option><option>Ice</option><option>Wind</option><option>Earth</option><option>Lightning</option><option>Water</option><option>Light</option><option>Dark</option></select></label></div><div class="editor-columns"><section><h3>Main deck <small>${editorDeck.main.length}/19</small></h3><div class="editor-list">${editorDeck.main.map(number => { const card = opusPh[number]!; return `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong class="editor-inspect" tabindex="0" role="button" aria-label="Inspect ${card.name}">${card.name}</strong><small>${number} · ${card.type} · ${card.cost}</small><button data-remove="${number}" aria-label="Remove ${card.name}">−</button></div>`; }).join('') || '<p class="subtle">Add cards from the catalog.</p>'}</div></section><section><h3>Card catalog <small>${pool.length} matching cards</small></h3><div class="editor-list">${pool.map(card => `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong class="editor-inspect" tabindex="0" role="button" aria-label="Inspect ${card.name}">${card.name}</strong><small>${card.number} · ${card.type} · ${card.cost}</small><button data-add="${card.number}" aria-label="Add ${card.name}" ${editorDeck.main.includes(card.number) || editorDeck.main.length >= 19 ? 'disabled' : ''}>+</button></div>`).join('')}</div></section></div>${inspectCard ? `<aside class="editor-inspection" role="region" aria-label="Card inspection"><div><p class="eyebrow">${inspectCard.number} · ${inspectCard.type} · ${inspectCard.elements.join(' / ')} · COST ${inspectCard.cost}${inspectCard.power === null ? '' : ` · ${inspectCard.power} POWER`}</p><h3>${inspectCard.name}</h3><p>${inspectionText}</p><small>${inspectCard.jobs.join(' · ')}${inspectCard.keywords.length ? ` · ${inspectCard.keywords.join(' · ')}` : ''}</small></div><button class="top-button" id="close-editor-inspection" aria-label="Close card inspection">Close</button></aside>` : ''}</section>`;
   const typeControl = root.querySelector<HTMLSelectElement>('#editor-type');
   if (typeControl) typeControl.value = editorType;
   const elementControl = root.querySelector<HTMLSelectElement>('#editor-element');
@@ -501,13 +533,21 @@ function renderDeckEditor(): void {
   }
 }
 
-function cardTile(state: MatchView, instance: string, selectable = true, playable = false, targetable = false, costOverride?: number): string {
+function cardTile(state: MatchView, instance: string, selectable = true, playable = false, targetable = false, costOverride?: number, activePaymentOffer?: PaymentOffer | null): string {
   const card = state.cards[instance]!;
   const def = opusPh[card.card];
   const presentation = state.presentations[card.object];
   const selected = selectedObject === card.object || orderSelection.includes(card.object);
-  return `<button class="card ${card.dull ? 'dull' : ''} ${selected ? 'selected' : ''} ${playable ? 'playable' : ''} ${targetable ? 'targetable' : ''}" data-card="${card.object}" data-table-instance="${instance}" data-zone="${card.zone}" data-testid="card-${card.object}" ${selectable ? '' : 'disabled'}>
+  const paymentOffer = activePaymentOffer ?? (actionDraft && (actionDraft.stage === 'payment' || actionDraft.stage === 'review')
+    ? state.actions.find(action => action.id === actionDraft!.offerId)?.payment : undefined);
+  const paymentKind = paymentOffer?.backupOptions.includes(card.object) ? 'backup'
+    : paymentOffer?.discardOptions.includes(card.object) ? 'discard' : null;
+  const paymentSelected = paymentChoices.some(choice => choice.object === card.object);
+  const rulesText = def?.abilities.map(ability => ability.text.trim()).filter(Boolean).join(' ');
+  const powerDelta = typeof def?.power === 'number' && typeof presentation?.power === 'number' ? presentation.power - def.power : 0;
+  return `<button class="card ${card.dull ? 'dull' : ''} ${selected ? 'selected' : ''} ${playable ? 'playable' : ''} ${targetable ? 'targetable' : ''} ${paymentKind ? 'payment-candidate' : ''} ${paymentSelected ? 'payment-selected' : ''}" data-card="${card.object}" data-table-instance="${instance}" data-zone="${card.zone}" ${paymentKind ? `data-payment-option="${paymentKind}"` : ''} data-testid="card-${card.object}" aria-label="${nameOf(state, instance)}${targetable ? ', legal target' : ''}${paymentKind ? `, ${paymentKind} for CP` : ''}" ${selectable ? '' : 'disabled'}>
     <span class="card-cost">${costOverride ?? def?.cost ?? '·'}</span><strong>${nameOf(state, instance)}</strong><small>${def?.type ?? 'Card back'} · ${presentation?.power !== null && presentation?.power !== undefined ? `${presentation.power} power` : def?.elements.join(' / ') ?? ''}</small>
+    ${rulesText ? `<span class="card-rules">${rulesText}</span>` : ''}${powerDelta ? `<span class="card-power-change ${powerDelta < 0 ? 'reduced' : 'increased'}">${powerDelta > 0 ? '+' : ''}${powerDelta}</span>` : ''}
     <span class="card-number">${card.card}</span></button>`;
 }
 function render(): void {
@@ -614,7 +654,15 @@ function render(): void {
   const top = state.zones[other];
   const selected = selectedObject ? findObject(state, selectedObject) : null;
   const selectedDef = selected ? opusPh[selected.card] : null;
-  const logItems = view.log.slice().reverse().map(event => `<li data-rule-event="${event.id}">${eventText(event)}</li>`).join('');
+  const selectedRulesText = selectedDef?.abilities.map(ability => ability.text.trim()).filter(Boolean).join(' ') ?? '';
+  const groupedLog: { event: import('./rules/types').RuleEvent; text: string; count: number }[] = [];
+  for (const event of view.log.slice().reverse()) {
+    const text = eventText(event);
+    const previous = groupedLog.at(-1);
+    if (previous?.text === text) previous.count += 1;
+    else groupedLog.push({ event, text, count: 1 });
+  }
+  const logItems = groupedLog.map(({ event, text, count }) => `<li data-rule-event="${event.id}">${text}${count > 1 ? ` × ${count}` : ''}</li>`).join('');
   const stackEntries = state.stack.map((item, index) => {
     const definition = opusPh[item.lastKnown.card];
     const ability = definition?.abilities.find(candidate => candidate.id === item.ability);
@@ -633,6 +681,14 @@ function render(): void {
     });
     stackEntries.unshift(`<li data-stack-entry="resolving-${state.resolving.source}" data-resolving="true"><strong>Resolving ${definition?.name ?? state.resolving.lastKnown.card}</strong><span>Player ${state.resolving.controller + 1} · ${ability?.text ?? state.resolving.ability}</span><small>Targets: ${targets.length ? targets.join(', ') : 'None'}</small></li>`);
   }
+  const zoneButtons = (seat: Seat) => `<div class="public-piles" aria-label="Player ${seat + 1} public zones"><button class="zone-pile deck-pile" data-open-zone="deck" data-zone-seat="${seat}" aria-label="Inspect Player ${seat + 1} deck"><span>DECK</span><b>${state.deckCounts[seat]}</b></button>${(['break', 'damage', 'removed'] as const).map(zone => `<button class="zone-pile ${zone}-pile" data-open-zone="${zone}" data-zone-seat="${seat}" aria-label="Inspect Player ${seat + 1} ${zone} zone"><span>${zone.toUpperCase()}</span><b>${state.zones[seat][zone].length}</b></button>`).join('')}</div>`;
+  const publicCards = openPublicZone && openPublicZone.zone !== 'deck'
+    ? state.zones[openPublicZone.seat][openPublicZone.zone].map(instance => cardTile(state, instance, true)).join('') : '';
+  const publicZoneDialog = openPublicZone ? `<section class="zone-inspection" role="dialog" aria-modal="true" aria-label="Player ${openPublicZone.seat + 1} ${openPublicZone.zone} zone"><button class="zone-inspection-close" data-close-zone aria-label="Close zone">×</button><h2>Player ${openPublicZone.seat + 1} ${openPublicZone.zone === 'deck' ? 'Deck' : openPublicZone.zone === 'break' ? 'Break Zone' : openPublicZone.zone === 'damage' ? 'Damage Zone' : 'Removed Zone'}</h2>${openPublicZone.zone === 'deck' ? `<p>${state.deckCounts[openPublicZone.seat]} cards remain. Their identities and order are hidden.</p>` : `<div class="zone-inspection-cards">${publicCards || '<p>No cards in this zone.</p>'}</div>`}</section>` : '';
+  const enlargedCard = enlargedObject ? findObject(state, enlargedObject) : null;
+  const enlargedDefinition = enlargedCard ? opusPh[enlargedCard.card] : null;
+  const enlargedPresentation = enlargedCard ? state.presentations[enlargedCard.object] : null;
+  const inspectorDialog = enlargedCard && enlargedDefinition ? `<section class="card-inspector" role="dialog" aria-modal="true" aria-label="Inspect ${enlargedDefinition.name}"><button class="inspector-close" data-close-inspector aria-label="Close card inspection">×</button><article class="inspector-face"><span class="card-cost">${enlargedDefinition.cost}</span><h2>${enlargedDefinition.name}</h2><p class="inspector-type">${enlargedDefinition.type} · ${enlargedDefinition.elements.join(' / ')}</p>${enlargedDefinition.abilities.map(ability => ability.text.trim()).filter(Boolean).map(text => `<p>${text}</p>`).join('')}<p class="inspector-power">${typeof enlargedDefinition.power === 'number' ? `Printed ${enlargedDefinition.power} · Effective ${enlargedPresentation?.power ?? enlargedDefinition.power}` : ''}</p><small>${enlargedDefinition.number}</small></article></section>` : '';
   const commander = state.cards[state.commanders[bottomSeat].instance]!;
   const opponentCommander = state.cards[state.commanders[other].instance]!;
   const playableObjects = new Set(actionView.castAccess.filter(access => access.canDeclare).map(access => access.source));
@@ -663,6 +719,11 @@ function render(): void {
     spent: Object.values(paymentState.spent).reduce((sum, amount) => sum + (amount ?? 0), 0),
     remainder: paymentState.remainder, dullSource: paymentOffer.dullSource,
     sacrificeSource: paymentOffer.sacrificeSource, reason: paymentState.reason,
+    excludedPaymentCards: state.zones[bottomSeat].hand.flatMap(instance => {
+      const card = state.cards[instance]!;
+      const definition = opusPh[card.card];
+      return definition?.elements.some(element => element === 'Light' || element === 'Dark') ? [definition.name] : [];
+    }),
     sources: [
       ...paymentOffer.backupOptions.map(object => ({ object, kind: 'backup' as const })),
       ...paymentOffer.discardOptions.map(object => ({ object, kind: 'discard' as const })),
@@ -706,7 +767,7 @@ function render(): void {
       ? '<button class="primary small" id="block-card">Block this attack</button>' : '',
   ].join('') : '';
   const choiceActions = choice?.kind === 'order'
-    ? `<div class="choice-options">${choice.options.map((option, index) => { const selectedIndex = orderSelection.indexOf(option.id); return `<button class="${selectedIndex >= 0 ? 'primary' : 'soft'} choice-peer" data-order-choice="${option.id}">${selectedIndex >= 0 ? `${selectedIndex + 1}. ` : ''}${option.label}</button>`; }).join('')}</div><button class="soft choice-peer" id="clear-order">Clear</button><button class="primary choice-peer" id="confirm-order" ${orderSelection.length !== choice.min ? 'disabled' : ''}>Confirm order</button>`
+    ? `<div class="choice-options">${choice.options.map(option => { const selectedIndex = orderSelection.indexOf(option.id); return `<button class="${selectedIndex >= 0 ? 'primary' : 'soft'} choice-peer" data-order-choice="${option.id}">${selectedIndex >= 0 ? `${selectedIndex + 1}. ` : ''}${option.label}</button>`; }).join('')}</div><button class="soft choice-peer" id="clear-order">Clear</button><button class="primary choice-peer" id="confirm-order" ${orderSelection.length !== choice.min ? 'disabled' : ''}>Confirm order</button>`
     : choice?.kind === 'allocation'
       ? `<div class="choice-options">${choice.options.map(option => `<label class="allocation-option">${option.label}<input type="number" data-allocation="${option.id}" min="0" step="${choice.allocation?.increment ?? 1}" value="${allocationDraft[option.id] ?? 0}" /></label>`).join('')}<span id="allocation-total">${Object.values(allocationDraft).reduce((sum, amount) => sum + amount, 0)} / ${choice.allocation?.total ?? 0}</span></div><button class="primary choice-peer" id="confirm-allocation" ${Object.values(allocationDraft).reduce((sum, amount) => sum + amount, 0) !== (choice.allocation?.total ?? 0) ? 'disabled' : ''}>Confirm allocation</button>`
       : choice
@@ -717,7 +778,7 @@ function render(): void {
     const controlled = state.field.filter(instance => state.cards[instance]!.controller === owner);
     const cardsOfType = (type: 'Forward' | 'Backup') => controlled.filter(instance => opusPh[state.cards[instance]!.card]!.type === type);
     const row = (type: 'Forward' | 'Backup') => cardsOfType(type)
-      .map(instance => cardTile(state, instance, true, false, legalDraftTarget(state, state.cards[instance]!.object))).join('') || `<span class="row-empty">No ${type.toLowerCase()}s</span>`;
+      .map(instance => cardTile(state, instance, true, false, legalDraftTarget(state, state.cards[instance]!.object), undefined, paymentOffer)).join('') || `<span class="row-empty">No ${type.toLowerCase()}s</span>`;
     const centerRow = owner === other ? 'Backup' : 'Forward';
     const edgeRow = centerRow === 'Forward' ? 'Backup' : 'Forward';
     const markup = (type: 'Forward' | 'Backup') => `<div class="field-row ${type === 'Backup' ? 'backups' : ''} ${cardsOfType(type).length ? '' : 'empty'}" role="region" aria-label="Player ${owner + 1} ${type}s">${row(type)}</div>`;
@@ -726,28 +787,43 @@ function render(): void {
   const partyControl = state.phase === 'attack' && state.active === bottomSeat && state.priority === bottomSeat && !state.combat && partyDraft.length > 0
     ? `<button class="primary" id="attack-party">Attack with ${partyDraft.length} Forward${partyDraft.length === 1 ? '' : 's'}</button>`
     : '';
-  root.innerHTML = `<header class="topbar"><a class="brand" href="#"><span class="brand-mark">D</span> DISSIDIA <small>PLAYTEST</small></a><div class="match-meta"><span>TURN ${state.turn || 'SETUP'}</span><b>·</b><span>${state.phase.toUpperCase()}</span><b>·</b><span>FIRST TO 7 DAMAGE</span><span class="offline-pill" id="offline-status">${offlineStatus === 'ready' ? 'OFFLINE READY' : offlineStatus === 'update' ? 'UPDATE READY' : offlineStatus === 'error' ? 'OFFLINE ERROR' : 'CACHING'}</span></div><div class="top-actions"><button class="top-button" id="inspect">Inspect Player ${other + 1}</button><button class="top-button" id="concede">Concede</button></div></header>
-    <section class="table" aria-label="Game table" data-view-seq="${state.seq}" data-generation="${state.generation}"><div class="player-row opponent"><div class="player-info"><span class="avatar blue">${other + 1}</span><div><strong>Player ${other + 1}</strong><small>${state.active === other ? 'ACTIVE PLAYER' : 'WAITING'}</small></div><span class="damage">${top.damage.length}<small> / 7</small></span></div><div class="opponent-zones"><div class="zone-label">COMMANDER ZONE</div>${opponentCommanderSlot}<div class="opponent-hand" aria-label="Player ${other + 1} hand">${Array.from({length: top.hand.length}, () => '<span class="back"></span>').join('')}</div><span class="pile-count">${top.deck.length} DECK</span></div></div>
+  root.innerHTML = `<header class="topbar"><a class="brand" href="#"><span class="brand-mark">D</span> DISSIDIA <small>PLAYTEST</small></a><div class="match-meta"><span>TURN ${state.turn || 'SETUP'}</span><b>·</b><span>${state.phase.toUpperCase()}</span></div><div class="top-actions"><button class="top-button" id="inspect">Inspect Player ${other + 1}</button><button class="top-button" id="concede">Concede</button></div></header>
+    <section class="table" aria-label="Game table" data-view-seq="${state.seq}" data-generation="${state.generation}"><div class="player-row opponent"><div class="player-info"><span class="avatar blue">${other + 1}</span><div><strong>Player ${other + 1}</strong><small>${state.active === other ? 'ACTIVE PLAYER' : 'WAITING'}</small></div><span class="damage"><b>${top.damage.length}</b><small> / 7</small></span></div><div class="opponent-zones"><div class="zone-label">COMMAND ZONE</div>${opponentCommanderSlot}<div class="opponent-hand" aria-label="Player ${other + 1} hand">${Array.from({length: top.hand.length}, () => '<span class="back"></span>').join('')}</div>${zoneButtons(other)}</div></div>
     <div class="center-table" id="battlefield-drop"><div class="center-caption">${state.stack.length ? `STACK · ${state.stack.length}` : 'BATTLEFIELD'}</div><div class="battlefield" aria-label="Battlefield">${fieldRows}</div><div class="stack-row">${state.stackCards.map(instance => { const card = state.cards[instance]!; return cardTile(state, instance, true, false, legalDraftTarget(state, card.object)); }).join('')}</div></div>
-    <div class="player-row current" data-seat="${bottomSeat}"><div class="player-info"><span class="avatar red">${bottomSeat + 1}</span><div><strong>Player ${bottomSeat + 1}</strong><small>${state.priority === bottomSeat ? 'YOUR PRIORITY' : `PLAYER ${state.active + 1} TURN`}</small></div><span class="damage">${bottom.damage.length}<small> / 7</small></span></div><div class="own-zones"><div class="zone-label">COMMANDER ZONE</div>${commanderSlot}<div class="deck-pile"><span>DECK</span><b>${bottom.deck.length}</b></div><div class="break-pile"><span>BREAK</span><b>${bottom.break.length}</b></div></div><div class="hand-zone"><div class="zone-label">PLAYER ${bottomSeat + 1} · HAND <span>${bottom.hand.length}</span></div><div class="other-zone-tray" aria-label="Playable cards from other zones">${commanderTray}</div><div class="hand-fan${bottom.hand.length <= 7 ? ' hand-fan-spread' : ''}" data-seat="${bottomSeat}" aria-label="Player ${bottomSeat + 1} hand">${orderedHand(bottomSeat, bottom.hand).map(instance => { const card = state.cards[instance]!; return cardTile(state, instance, true, playableObjects.has(card.object) && !!makePayment(state, bottomSeat, card.object, opusPh[card.card]!.cost)); }).join('')}</div></div></div></section>
+    <div class="player-row current" data-seat="${bottomSeat}"><div class="player-info"><span class="avatar red">${bottomSeat + 1}</span><div><strong>Player ${bottomSeat + 1}</strong><small>${state.priority === bottomSeat ? 'YOUR PRIORITY' : `PLAYER ${state.active + 1} TURN`}</small></div><span class="damage"><b>${bottom.damage.length}</b><small> / 7</small></span></div><div class="own-zones"><div class="zone-label">COMMAND ZONE</div>${commanderSlot}${zoneButtons(bottomSeat)}</div><div class="hand-zone"><div class="zone-label">PLAYER ${bottomSeat + 1} · HAND <span>${bottom.hand.length}</span></div><div class="other-zone-tray" aria-label="Playable cards from other zones">${commanderTray}</div><div class="hand-fan${bottom.hand.length <= 7 ? ' hand-fan-spread' : ''}" data-seat="${bottomSeat}" aria-label="Player ${bottomSeat + 1} hand">${orderedHand(bottomSeat, bottom.hand).map(instance => { const card = state.cards[instance]!; return cardTile(state, instance, true, playableObjects.has(card.object) && !!makePayment(state, bottomSeat, card.object, opusPh[card.card]!.cost), false, undefined, paymentOffer); }).join('')}</div></div></div></section>
     ${breakTargets}${prompt}
-    <aside class="event-log" role="region" aria-label="Game activity">${stackEntries.length ? `<section class="stack-details" role="region" aria-label="Stack details"><div class="eyebrow">STACK DETAILS</div><ol aria-label="Stack entries">${stackEntries.join('')}</ol></section>` : ''}<div class="eyebrow">MATCH LOG</div><ul role="log" aria-label="Game log">${logItems || '<li>Accepted actions will appear here.</li>'}</ul></aside>
-    <footer class="bottom-bar"><div class="selection-area">${selected && selectedDef ? `<div class="selected-preview"><span class="eyebrow">${selectedDef.type} · ${selectedDef.elements.join(' / ')}</span><strong>${selectedDef.name}</strong><small class="selection-detail">${selectedDef.text}</small>${selectedActions}${paymentPanel}${castingSource || abilityDraft ? '<button class="soft small" id="cancel-draft">Cancel</button>' : ''}</div>` : `<div class="empty-selection"><span class="eyebrow">CHOICE</span><strong>${choice ? choice.reason : 'Select a card to inspect'}</strong><small>${choice ? 'Use the decision controls above to continue.' : notice || 'Cards glow when an action is available.'}</small></div>`}</div><div class="phase-controls"><span class="seat-label">DECISION · PLAYER ${(decision ?? bottomSeat) + 1}</span>${partyControl}${!choice && state.priority === bottomSeat ? '<button class="primary" id="pass">Pass priority</button>' : '<button class="soft" disabled>Await decision</button>'}<button class="top-button" id="main-menu">Menu</button></div></footer>
+    <aside class="event-log" role="region" aria-label="Game activity">${stackEntries.length ? `<section class="stack-details" role="region" aria-label="Stack details"><div class="eyebrow">STACK DETAILS</div><ol aria-label="Stack entries">${stackEntries.join('')}</ol></section>` : ''}<div class="eyebrow">MATCH LOG · ${state.phase.toUpperCase()}</div><ul role="log" aria-label="Game log">${logItems || '<li>Accepted actions will appear here.</li>'}</ul></aside>${publicZoneDialog}${inspectorDialog}
+    <footer class="bottom-bar"><div class="selection-area">${selected && selectedDef ? `<div class="selected-preview"><span class="eyebrow">${selectedDef.type} · ${selectedDef.elements.join(' / ')}</span><strong>${selectedDef.name}</strong><small class="selection-detail">${selectedRulesText}</small>${selectedActions}${paymentPanel}${castingSource || abilityDraft ? '<button class="soft small" id="cancel-draft">Cancel</button>' : ''}</div>` : `<div class="empty-selection"><span class="eyebrow">CHOICE</span><strong>${choice ? choice.reason : 'Select a card to inspect'}</strong><small>${choice ? 'Use the decision controls above to continue.' : notice || 'Cards glow when an action is available.'}</small></div>`}</div><div class="phase-controls"><span class="seat-label">DECISION · PLAYER ${(decision ?? bottomSeat) + 1}</span>${partyControl}${autoBudgetPaused ? '<button class="soft" id="continue-auto">Continue Smart Priority</button>' : ''}${!choice && state.priority === bottomSeat ? `<button class="soft" id="toggle-hold" aria-pressed="${priorityHolds[bottomSeat]}">Hold Priority: ${priorityHolds[bottomSeat] ? 'On' : 'Off'}</button><button class="primary" id="pass">Pass priority</button>` : '<button class="soft" disabled>Await decision</button>'}<button class="top-button" id="main-menu">Menu</button></div></footer>
     ${state.result ? `<div class="result-overlay"><h2>${state.result.winner === null ? 'Draw game' : `Player ${state.result.winner + 1} wins`}</h2><p>${state.result.reason === 'damage' ? 'Seven damage' : state.result.reason}</p><button class="primary" id="new-match">New match</button><button class="top-button" id="result-export-save">Export save</button><button class="soft" id="result-menu">Return to menu</button></div>` : ''}<div class="toast" role="status">${notice || host.persistenceError || ''}${host.persistenceError ? '<button class="soft small" id="retry-save">Retry save</button>' : ''}</div>`;
+
+  const logScroller = root.querySelector<HTMLElement>('.event-log [role="log"]');
+  if (logScroller) logScroller.scrollTop = logScroller.scrollHeight;
 
   if (selected && selectedDef) {
     const status = [selected.dull ? 'Dull' : '', selected.frozen ? 'Freeze' : '', selected.damage ? `${selected.damage} damage` : '']
       .filter(Boolean).join(' · ') || 'Ready';
     const presentation = state.presentations[selected.object];
     const keywords = presentation?.keywords.length ? `Keywords: ${presentation.keywords.join(', ')}` : '';
+    const effectivePower = typeof selectedDef.power === 'number'
+      ? state.presentations[selected.object]?.power ?? selectedDef.power : null;
+    const powerDelta = effectivePower === null ? 0 : effectivePower - selectedDef.power!;
     const power = typeof selectedDef.power === 'number'
-      ? ` · Printed ${selectedDef.power} · Effective ${state.presentations[selected.object]?.power ?? selectedDef.power}` : '';
+      ? ` · Printed ${selectedDef.power} · <strong class="effective-power ${powerDelta < 0 ? 'reduced' : powerDelta > 0 ? 'increased' : ''}">Effective ${effectivePower}${powerDelta ? ` (${powerDelta > 0 ? '+' : ''}${powerDelta})` : ''}</strong>` : '';
     const commanderTax = presentation?.commander ? ` · Commander tax ${presentation.commanderTax} CP` : '';
     root.querySelector('.selection-detail')?.insertAdjacentHTML('afterend',
       `<small class="card-inspection-meta">Owner Player ${selected.owner + 1} · Controller Player ${selected.controller + 1} · ${selected.zone} · ${status}${keywords ? ` · ${keywords}` : ''}${power}${commanderTax}</small>`);
   }
   root.querySelector('.top-actions')?.insertAdjacentHTML('beforeend', '<button class="top-button" id="export-save">Export save</button><label class="top-button import-button" for="import-save">Import</label><input id="import-save" type="file" accept="application/json,.json" hidden />');
   root.querySelector('#inspect')?.addEventListener('click', () => { inspectedSeat = other; matchController?.inspectSeat(other); render(); });
+  root.querySelector('#toggle-hold')?.addEventListener('click', () => {
+    priorityHolds[bottomSeat] = !priorityHolds[bottomSeat];
+    try { localStorage.setItem('dissidia-priority-holds', JSON.stringify(priorityHolds)); } catch { /* Hold remains available until reload when storage is disabled. */ }
+    autoScheduledKey = null;
+    render();
+  });
+  root.querySelector('#continue-auto')?.addEventListener('click', () => {
+    autoBurstCount = 0; autoBudgetPaused = false; autoScheduledKey = null; notice = ''; render();
+  });
   const confirmChoice = root.querySelector<HTMLButtonElement>('#confirm-choice');
   if (confirmChoice) confirmChoice.disabled = choiceSelectionInvalid;
   const confirmOrder = root.querySelector<HTMLButtonElement>('#confirm-order');
@@ -832,12 +908,30 @@ function render(): void {
     render();
   });
   root.querySelectorAll<HTMLElement>('[data-ability]').forEach(button => button.addEventListener('click', () => beginAbility(state, selected!.object, button.dataset.ability!)));
+  root.querySelectorAll<HTMLElement>('[data-open-zone]').forEach(button => button.addEventListener('click', () => {
+    openPublicZone = { seat: Number(button.dataset.zoneSeat) as Seat, zone: button.dataset.openZone as 'deck' | 'break' | 'damage' | 'removed' };
+    render();
+  }));
+  root.querySelector('[data-close-zone]')?.addEventListener('click', () => { openPublicZone = null; render(); });
+  root.querySelector('[data-close-inspector]')?.addEventListener('click', () => { enlargedObject = null; render(); });
   root.querySelector('#attack-card')?.addEventListener('click', () => selected && command(bottomSeat, { kind: 'attack', members: [selected.object] }, state));
   root.querySelector('#block-card')?.addEventListener('click', () => selected && command(bottomSeat, { kind: 'block', blocker: selected.object }, state));
   root.querySelectorAll<HTMLElement>('[data-card]').forEach(button => button.addEventListener('click', () => {
     const object = button.dataset.card!;
     if (suppressCardClick === object && Date.now() <= suppressCardClickUntil) { suppressCardClick = null; return; }
     const target = findObject(state, object);
+    if (actionDraft && (actionDraft.stage === 'payment' || actionDraft.stage === 'review') && paymentOffer) {
+      const kind = paymentOffer.backupOptions.includes(object) ? 'backup'
+        : paymentOffer.discardOptions.includes(object) ? 'discard' : null;
+      if (kind && target) {
+        const current = paymentChoices.find(choice => choice.object === object);
+        paymentChoices = current ? paymentChoices.filter(choice => choice.object !== object)
+          : [...paymentChoices, { object, element: opusPh[target.card]!.elements.find(element => paymentOffer.elements.includes(element) || paymentOffer.elements.some(required => required === 'Light' || required === 'Dark')) ?? opusPh[target.card]!.elements[0]!, kind }];
+        actionDraft = buildPaymentDraft(actionDraft, paymentOffer, paymentChoices, selectedSpecialDiscard).draft;
+        render();
+        return;
+      }
+    }
     if ((castingSource || abilityDraft) && targetSelection.includes(object)) {
       const source = findObject(state, castingSource ?? abilityDraft!.source)!;
       targetSelection = toggleSelection(targetSelection, object, abilityDraft ? 1 : requiredTargets(source.card));
@@ -867,6 +961,11 @@ function render(): void {
     } else if (choice && choice.options.some(option => option.id === object)) {
       orderSelection = [...orderSelection, object];
     } else selectedObject = object;
+    render();
+  }));
+  root.querySelectorAll<HTMLElement>('[data-card]').forEach(button => button.addEventListener('contextmenu', event => {
+    event.preventDefault();
+    enlargedObject = button.dataset.card!;
     render();
   }));
   root.querySelectorAll<HTMLElement>('[data-card]').forEach(button => {
@@ -1009,13 +1108,18 @@ function render(): void {
   };
   root.onpointerleave = () => { targetCursor = null; drawTargeting(); };
   drawTargeting();
-  void top;
+  scheduleSmartPriority(state);
 }
-let started = false;
 function hostStarted() { try { host.view(); return true; } catch { return false; } }
 host.subscribe(render);
 applyUpdate = registerOffline(status => { offlineStatus = status; render(); });
 window.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && (enlargedObject || openPublicZone)) {
+    enlargedObject = null; openPublicZone = null; render(); event.preventDefault(); return;
+  }
+  if (event.key.toLowerCase() === 'i' && selectedObject && !event.ctrlKey && !event.metaKey && !actionDraft) {
+    enlargedObject = selectedObject; render(); event.preventDefault(); return;
+  }
   if (event.key === 'Escape' && handPointer) {
     clearHandPointer();
     event.preventDefault();
@@ -1054,4 +1158,3 @@ void loadDecks().then(decks => {
   if (savedDecks.length !== decks.length) notice = 'An invalid saved deck was excluded from the match menu. Edit the deck before using it.';
   render();
 });
-window.addEventListener('resize', () => game.scale.refresh());

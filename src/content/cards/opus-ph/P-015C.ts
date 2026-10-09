@@ -31,8 +31,8 @@ export const card: CardDefinition = {
 const summonAbility = (id: string, ex: boolean, kind: 'summon' | 'auto', run: (context: ResolutionContext) => StepResult['batches']) => ({
   id, kind, text: card.text, ex, zones: ex ? ['damage' as const] : ['hand' as const],
   cost: { cp: ex ? 0 : card.cost, elements: ex ? [] : card.elements, dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-  modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
-  triggers: [], fieldEffects: [], replacements: [],
+  modes: [], targets: { min: 1, max: 1 },
+  fieldEffects: [], replacements: [],
   steps: { resolve: { payloadSchema: z.null(), run: (context: ResolutionContext) => ({ batches: run(context), choice: null, next: null }) } },
 });
 export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type {
-  Answer, CardObject, Catalog, Choice, Element, Json, Keyword, MatchState, ObjectId, RuleError, RuleEvent, Seat, Zone,
+  Answer, CardObject, Catalog, Choice, Json, Keyword, MatchState, ObjectId, RuleError, RuleEvent, Seat, Zone,
 } from '../types';
 
 export type ExecutionMode = 'stack' | 'ex' | 'cost' | 'rule';

@@ -16,7 +16,7 @@ const batchDeparture: ResumeStep = {
     if (!answer) return { batches: [], next: null, choice: {
       seat: frame.controller, kind: 'confirm', reason: 'Choose where your Commander goes as it leaves the field.',
       options: [
-        { id: 'return', label: 'Return to Commander Zone', object: payload.object },
+        { id: 'return', label: 'Return to Command Zone', object: payload.object },
         { id: 'destination', label: 'Use normal destination', object: payload.object },
       ], min: 1, max: 1, allocation: null, resume,
     } };

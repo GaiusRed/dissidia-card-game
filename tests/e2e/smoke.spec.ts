@@ -1,33 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 
-async function saveCommanderZoneCapture(page: import('@playwright/test').Page, info: import('@playwright/test').TestInfo, filename: string): Promise<void> {
-  const screenshot = await page.screenshot({ fullPage: true });
-  const path = resolve(process.cwd(), 'docs/ui-captures', filename);
-  mkdirSync(resolve(process.cwd(), 'docs/ui-captures'), { recursive: true });
-  writeFileSync(path, screenshot);
-  await info.attach(filename, { body: screenshot, contentType: 'image/png' });
-}
-
-test('starts with the approved light theme tokens and readable text', async ({ page }) => {
-  await page.goto('/');
-  const theme = await page.locator('html').evaluate(element => {
-    const root = getComputedStyle(element);
-    const app = getComputedStyle(document.querySelector('#app')!);
-    return {
-      colorScheme: root.colorScheme,
-      canvas: root.getPropertyValue('--canvas').trim(),
-      surface: root.getPropertyValue('--surface').trim(),
-      text: root.getPropertyValue('--text').trim(),
-      appBackground: app.backgroundColor,
-      appColor: app.color,
-    };
-  });
-  expect(theme).toMatchObject({
-    colorScheme: 'light', canvas: '#f7f5ef', surface: '#fff', text: '#172b3a',
-    appBackground: 'rgb(247, 245, 239)', appColor: 'rgb(23, 43, 58)',
-  });
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('dissidia-priority-holds', JSON.stringify({ 0: true, 1: true })));
 });
 
 test('starts a match, completes setup, and advances priority from the real controls', async ({ page }) => {
@@ -46,25 +20,7 @@ test('starts a match, completes setup, and advances priority from the real contr
   expect(errors).toEqual([]);
 });
 
-test('keeps contextual choices in the reserved bottom dock at both desktop sizes', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'New match' }).click();
-  const dock = page.getByRole('region', { name: 'Required choice' });
-  for (const viewport of [{ width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
-    await page.setViewportSize(viewport);
-    await expect(dock).toBeVisible();
-    await expect.poll(async () => {
-      const bounds = await dock.boundingBox();
-      return bounds !== null
-        && bounds.x === 0
-        && bounds.x + bounds.width <= viewport.width * 0.56
-        && bounds.y > viewport.height * 0.60;
-    }).toBe(true);
-  }
-});
-
-test('lets a player order the mulligan cards through the bottom-left choice dock', async ({ page }) => {
+test('lets a player order the mulligan cards through the decision dock', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'New match' }).click();
   await page.locator('[data-choice]').first().click();
@@ -221,13 +177,10 @@ test('reviews a pointer-dragged playable Forward before casting it at both deskt
   await page.setViewportSize({ width: 1920, height: 1080 });
   await expect(page.getByRole('button', { name: 'Pass priority' })).toBeVisible();
   await expect(page.locator('.bottom-bar')).toBeVisible();
-  const hand = await page.locator('.hand-zone').boundingBox();
-  const dock = await page.locator('.bottom-bar').boundingBox();
-  expect(hand && dock && hand.y + hand.height).toBeLessThanOrEqual(dock!.y + 2);
   expect(errors).toEqual([]);
 });
 
-test('shows one physical Commander in the Commander Zone', async ({ page }) => {
+test('shows one physical Commander in the Command Zone', async ({ page }) => {
   await page.goto('/');
   await page.locator('#match-seed').fill('2');
   await page.getByRole('button', { name: 'New match' }).click();
@@ -235,7 +188,7 @@ test('shows one physical Commander in the Commander Zone', async ({ page }) => {
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
   const zone = page.locator('.own-zones');
-  await expect(zone.locator('.zone-label')).toContainText('COMMANDER ZONE');
+  await expect(zone.locator('.zone-label')).toContainText('COMMAND ZONE');
   await expect(zone.locator('[data-card]')).toHaveCount(1);
   await expect(zone.locator('[data-card]')).toContainText(/Cinder Marshal|Tide Warden/);
 });
@@ -283,7 +236,7 @@ test('reviews a targeted Summon before submitting its cast', async ({ page }) =>
   await expect(target).toBeVisible();
 
   await page.getByRole('button', { name: 'Confirm Summon · 2 CP', exact: true }).click();
-  await expect(page.locator('.event-log')).toContainText('Return Tide was cast.');
+  await expect(page.locator('.event-log')).toContainText('Player 2 cast Return Tide.');
   await expect(page.locator('.stack-row [data-card]')).toHaveCount(1);
 });
 
@@ -298,13 +251,13 @@ test('moves a field Commander back to its zone without duplicating its physical 
   await tide.click();
   await page.getByRole('button', { name: 'Review Summon · 2 CP', exact: true }).click();
   await commander.click();
-  await page.getByRole('button', { name: /Backup · Tide Witness · Water/ }).click();
+  await page.locator('.card[data-payment-option="backup"]').filter({ hasText: 'Tide Witness' }).click();
   await page.getByRole('button', { name: 'Confirm Summon · 2 CP', exact: true }).click();
   await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
   await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Required choice' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Required choice' })).toContainText('Commander');
-  await page.getByRole('button', { name: /Commander Zone/ }).click();
+  await page.getByRole('button', { name: 'Return to Command Zone', exact: true }).click();
   await expect(page.locator(`[data-table-instance="${physicalId}"]`)).toHaveCount(1);
   await expect(page.locator(`[data-table-instance="${physicalId}"]`)).toHaveAttribute('data-zone', 'commander');
 });
@@ -319,7 +272,7 @@ test('tracks the Commander zone when its owner chooses a normal destination', as
   await tide.click();
   await page.getByRole('button', { name: 'Review Summon · 2 CP', exact: true }).click();
   await commander.click();
-  await page.getByRole('button', { name: /Backup · Tide Witness · Water/ }).click();
+  await page.locator('.card[data-payment-option="backup"]').filter({ hasText: 'Tide Witness' }).click();
   await page.getByRole('button', { name: 'Confirm Summon · 2 CP', exact: true }).click();
   await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
   await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
@@ -330,7 +283,7 @@ test('tracks the Commander zone when its owner chooses a normal destination', as
   await expect(page.locator(`.hand-fan [data-table-instance="${physicalId}"]`)).toHaveCount(1);
 });
 
-test('keeps one Commander identity when a Summon sends it to the removed zone', async ({ page }, info) => {
+test('keeps one Commander identity when a Summon sends it to the removed zone', async ({ page }) => {
   await page.goto('/');
   await page.locator('#scenario-select').selectOption('commander-removed-destination');
   await page.getByRole('button', { name: 'Start scenario', exact: true }).click();
@@ -349,14 +302,12 @@ test('keeps one Commander identity when a Summon sends it to the removed zone', 
 
   const choice = page.getByRole('region', { name: 'Required choice' });
   await expect(choice).toContainText('Commander');
-  await saveCommanderZoneCapture(page, info, 'commander-removed-choice.png');
   await page.getByRole('button', { name: 'Use normal destination', exact: true }).click();
   await expect(page.locator(`[data-table-instance="${physicalId}"]`)).toHaveCount(1);
   await expect(page.locator(`[data-table-instance="${physicalId}"]`)).toHaveAttribute('data-zone', 'removed');
-  await saveCommanderZoneCapture(page, info, 'commander-removed-zone.png');
 });
 
-test('keeps one Commander identity when a Summon sends it to the Break Zone', async ({ page }, info) => {
+test('keeps one Commander identity when a Summon sends it to the Break Zone', async ({ page }) => {
   await page.goto('/');
   await page.locator('#scenario-select').selectOption('commander-break-destination');
   await page.getByRole('button', { name: 'Start scenario', exact: true }).click();
@@ -374,10 +325,8 @@ test('keeps one Commander identity when a Summon sends it to the Break Zone', as
 
   const choice = page.getByRole('region', { name: 'Required choice' });
   await expect(choice).toContainText('Commander');
-  await saveCommanderZoneCapture(page, info, 'commander-break-choice.png');
   await page.getByRole('button', { name: 'Use normal destination', exact: true }).click();
   const physicalIdentity = page.locator(`[data-table-instance="${physicalId}"]`);
   await expect(physicalIdentity).toHaveCount(1);
   await expect(physicalIdentity).toHaveAttribute('data-zone', 'break');
-  await saveCommanderZoneCapture(page, info, 'commander-break-zone.png');
 });

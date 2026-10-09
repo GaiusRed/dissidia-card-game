@@ -64,7 +64,7 @@ export function applyPreparedBatch(state: MatchState, batch: PendingBatch, conte
     if (applied.error) return { events: [], error: applied.error };
     events.push(...applied.events);
   }
-  finalOperations.forEach((operation, index) => {
+  finalOperations.forEach(operation => {
     if (operation.kind !== 'move') return;
     const departed = batch.snapshots.find(card => card.object === operation.object);
     if (!departed || departed.zone !== 'field') return;

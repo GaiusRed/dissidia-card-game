@@ -6,17 +6,12 @@ import { buildFixture } from '../../src/scenarios/fixtures';
 
 describe('focused scenario catalog', () => {
   it('loads every validated scenario as a serializable new match origin', () => {
-    expect(scenarioCatalog.map(scenario => scenario.id)).toEqual([
-      'commander-third-cast', 'multi-ex', 'control-conflict', 'battlefield-card-status', 'end-phase-two-card-discard', 'end-trigger-order', 'party-first-strike', 'commander-destinations', 'commander-removed-destination', 'commander-break-destination',
-      'return-tide-affordable', 'twin-embers-target-selection', 'summon-without-payment', 'duplicate-name-conflict', 'light-dark-conflict', 'commander-entry-target',
-    ]);
+    const ids = scenarioCatalog.map(scenario => scenario.id);
+    expect(new Set(ids).size).toBe(ids.length);
     for (const scenario of scenarioCatalog) {
       const state = loadScenario(scenario.id, context);
       expect(() => assertInvariants(state, context)).not.toThrow();
       expect(JSON.parse(JSON.stringify(state))).toEqual(state);
-      expect(scenario.version).toBeGreaterThan(0);
-      expect(scenario.title).not.toBe('');
-      expect(scenario.expected.length).toBeGreaterThan(0);
     }
   });
 

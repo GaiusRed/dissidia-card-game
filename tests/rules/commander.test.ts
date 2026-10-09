@@ -6,7 +6,7 @@ import { projectView } from '../../src/host/views';
 import { fixture, context } from '../support/harness';
 
 describe('Commander tax', () => {
-  it('adds two CP per successful Commander Zone cast and does not tax a hand cast', () => {
+  it('adds two CP per successful Command Zone cast and does not tax a hand cast', () => {
     const h = fixture({ commanderCasts: { 0: 2 } });
     const instance = h.state.commanders[0].instance;
     expect(commanderCost(h.state, instance, context)).toBe(7);

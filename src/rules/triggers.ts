@@ -1,4 +1,3 @@
-import { effectivePower } from './continuous';
 import { openTriggerOrder } from './priority';
 import { openRuleChoice } from './rule-choice';
 import { RULE_ENGINE_VERSION } from './rule-scripts';
@@ -62,7 +61,7 @@ export function openTriggerTargetChoice(state: MatchState, context: EngineContex
       continue;
     }
     openRuleChoice(state, { seat: item.controller, kind: 'targets',
-      reason: `${context.catalog[item.lastKnown.card]?.name ?? 'Triggered ability'}: choose a target.`,
+      reason: `${context.catalog[item.lastKnown.card]?.name ?? 'Triggered ability'}: ${context.catalog[item.lastKnown.card]?.abilities.find(ability => ability.id === item.resume.ability)?.text ?? 'Choose a target.'}`,
       options, min: 1, max: 1, allocation: null,
       resume: { script: 'rules', version: RULE_ENGINE_VERSION, ability: 'choice-trigger', step: 'target',
         payload: { item: item.id } } }, item.lastKnown);

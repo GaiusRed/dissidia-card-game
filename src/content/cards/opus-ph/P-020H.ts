@@ -34,8 +34,8 @@ export const script: CardScript = { metadata: card, behaviorVersion: '1', abilit
   id: 'controlled-burn', kind: 'summon', text: card.text, ex: false, zones: ['hand'],
   cost: { cp: card.cost, elements: card.elements, dullSource: false, sacrificeSource: false, sameNameDiscard: false },
   modes: card.summonTarget!.modes!.map(mode => ({ id: mode.id, label: mode.label, object: mode.id })),
-  targets: { min: 1, max: 1, distinct: true, accepts: () => true },
-  triggers: [], fieldEffects: [], replacements: [],
+  targets: { min: 1, max: 1 },
+  fieldEffects: [], replacements: [],
   steps: { resolve: { payloadSchema: z.null(), run: ({ frame }) => {
     const target = frame.targets[0];
     if (!target) return { batches: [], choice: null, next: null };

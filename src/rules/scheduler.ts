@@ -88,7 +88,7 @@ export function runScheduler(state: MatchState, context: EngineContext): Schedul
             id: `choice-${state.nextId++}`, seat: replacement.owner, kind: 'confirm',
             reason: 'Choose where your Commander goes as it leaves the field.',
             options: [
-              { id: 'return', label: 'Return to Commander Zone', object: snapshot.object },
+              { id: 'return', label: 'Return to Command Zone', object: snapshot.object },
               { id: 'destination', label: 'Use normal destination', object: snapshot.object },
             ], min: 1, max: 1, allocation: null, resume,
           };
@@ -133,6 +133,11 @@ export function runScheduler(state: MatchState, context: EngineContext): Schedul
         continue;
       }
       if (frame.scriptComplete) {
+        if (frame.mode === 'stack') {
+          events.push({ id: `event-${state.nextId++}`, type: 'stack.effect-completed', data: {
+            source: frame.source, card: frame.lastKnown.card, controller: frame.controller, ability: frame.resume.ability, targets: [...frame.targets],
+          } });
+        }
         const stackSource = state.cards[frame.lastKnown.instance];
         if (frame.mode === 'stack' && stackSource?.zone === 'stack' && context.catalog[stackSource.card]?.type === 'Summon') {
           state.execution.batch = prepareBatch(state, { simultaneous: false, operations: [

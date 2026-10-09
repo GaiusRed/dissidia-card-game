@@ -6,12 +6,11 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   outputDir: 'test-results/ui-design',
-  snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}-{projectName}-{platform}{ext}',
   reporter: [['list'], ['html', { outputFolder: 'playwright-report/ui-design', open: 'never' }],
     ['json', { outputFile: 'test-results/ui-design-results.json' }]],
   use: {
     ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:4174',
-    trace: 'retain-on-failure', screenshot: 'on', video: 'retain-on-failure',
+    trace: 'retain-on-failure', screenshot: 'only-on-failure', video: 'retain-on-failure',
   },
   projects: [
     { name: '1280-normal', use: { viewport: { width: 1280, height: 720 }, reducedMotion: 'no-preference' } },

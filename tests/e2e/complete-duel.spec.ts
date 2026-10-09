@@ -47,7 +47,7 @@ async function answerVisibleChoice(page: Page): Promise<void> {
   await submitVisibleCommand(page, panel.getByRole('button', { name: 'Confirm choice', exact: true }));
 }
 
-async function makeAvailableForwardOrBackup(page: Page, seat: number): Promise<boolean> {
+async function makeAvailableForwardOrBackup(page: Page, _seat: number): Promise<boolean> {
   const hand = page.locator('.hand-fan .card.playable');
   const forward = hand.filter({ hasText: /Forward ·/ }).first();
   const backup = hand.filter({ hasText: /Backup ·/ }).first();
@@ -106,6 +106,7 @@ async function playDuel(page: Page, info: TestInfo, viewport: { width: number; h
   page.on('console', message => { if (message.type() === 'error') browserErrors.push(message.text()); });
   await page.setViewportSize(viewport);
   if (!reuseOfflineShell) {
+    await page.addInitScript(() => localStorage.setItem('dissidia-priority-holds', JSON.stringify({ 0: true, 1: true })));
     await page.context().setOffline(false);
     await page.goto('/');
     await expect(page.locator('#offline-status')).toHaveText('Ready for offline play', { timeout: 20_000 });
@@ -192,7 +193,6 @@ async function playDuel(page: Page, info: TestInfo, viewport: { width: number; h
   console.log(`Duel at ${viewport.width}: result=${JSON.stringify(save.state.result)} casts=${JSON.stringify([...casts])} attacks=${JSON.stringify([...attacks])} blocks=${JSON.stringify([...blocks])}`);
   await info.attach(`duel-log-${viewport.width}`, { body: log, contentType: 'text/plain' });
   await info.attach(`duel-transcript-summary-${viewport.width}`, { body: JSON.stringify(save.transcript.map(command => ({ seat: command.seat, intent: command.intent.kind })), null, 2), contentType: 'application/json' });
-  await page.screenshot({ path: info.outputPath(`duel-result-${viewport.width}.png`), fullPage: true });
   await expect(result, `Expected a legal winner. Visible log tail: ${log.slice(-2000)}`).toContainText(/Player [12] wins/);
   expect([...casts].sort(), log.slice(-2000)).toEqual([0, 1]);
   expect([...attacks].sort(), log.slice(-2000)).toEqual([0, 1]);

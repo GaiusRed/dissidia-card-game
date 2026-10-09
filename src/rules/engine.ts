@@ -4,11 +4,10 @@ import { declareAttack, declareBlock } from './combat';
 import { activateAbility } from './activation';
 import { assertInvariants } from './invariants';
 import { checkOutcomes } from './outcomes';
-import { openTriggerOrder, passPriority, runEndCheckpoint } from './priority';
+import { openTriggerOrder, passPriority } from './priority';
 import { runRuleCheckpoint } from './checkpoints';
 import { continueDamageEx } from './damage';
 import { resumeChoice, runScheduler } from './scheduler';
-import { openTriggerTargetChoice } from './triggers';
 import type { Command, EngineContext, MatchState, RuleError, RuleEvent, Transition } from './types';
 export { describeCastAccess, legalActions } from './actions';
 

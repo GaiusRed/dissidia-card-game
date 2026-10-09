@@ -37,8 +37,8 @@ export const card: CardDefinition = {
 export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [{
   id: 'dawn-guardian-replacement', kind: 'replacement', text: card.abilities[0]!.text, ex: false, zones: ['field'],
   cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-  modes: [], targets: { min: 0, max: 0, distinct: true, accepts: () => true },
-  triggers: [], fieldEffects: [], replacements: [{
+  modes: [], targets: { min: 0, max: 0 },
+  fieldEffects: [], replacements: [{
     propose: (_state, operation, source) => {
       if (operation.kind !== 'forward-damage' || operation.target !== source.object) return null;
       return { id: 'dawn-guardian-reduce-damage', controller: source.controller,

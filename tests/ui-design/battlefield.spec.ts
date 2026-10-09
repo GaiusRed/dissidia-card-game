@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('dissidia-priority-holds', JSON.stringify({ 0: true, 1: true })));
+});
 
 test('field status and controller identity stay readable from both player views', async ({ page }) => {
   await page.goto('/');
@@ -16,23 +18,15 @@ test('field status and controller identity stay readable from both player views'
   await firstForward.click();
   await expect(page.locator('.card-inspection-meta')).toContainText('1 damage');
   await expect(page.locator('.card-inspection-meta')).toContainText('Freeze');
-  const freezeScreenshot = await page.screenshot({ fullPage: true });
-  const captureDirectory = resolve(process.cwd(), 'docs/ui-captures');
-  mkdirSync(captureDirectory, { recursive: true });
-  writeFileSync(resolve(captureDirectory, `battlefield-freeze-${test.info().project.name}.png`), freezeScreenshot);
-  await test.info().attach('battlefield-freeze', { body: freezeScreenshot, contentType: 'image/png' });
   const ids = await page.locator('.table [data-table-instance]').evaluateAll(nodes =>
     nodes.map(node => (node as HTMLElement).dataset.tableInstance));
   expect(new Set(ids).size).toBe(ids.length);
 
-  await page.getByRole('button', { name: /Inspect Player/ }).click();
+  await page.locator('#inspect').click();
   const secondForward = page.locator('[aria-label="Player 2 Forwards"] .card');
   await secondForward.click();
   await expect(page.locator('.card-inspection-meta')).toContainText('2 damage');
   const viewedIds = await page.locator('.table [data-table-instance]').evaluateAll(nodes =>
     nodes.map(node => (node as HTMLElement).dataset.tableInstance));
   expect(new Set(viewedIds).size).toBe(viewedIds.length);
-  const screenshot = await page.screenshot({ fullPage: true });
-  writeFileSync(resolve(captureDirectory, `battlefield-status-${test.info().project.name}.png`), screenshot);
-  await test.info().attach('battlefield-status', { body: screenshot, contentType: 'image/png' });
 });

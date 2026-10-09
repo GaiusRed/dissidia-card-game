@@ -31,8 +31,8 @@ export const card: CardDefinition = {
 const returnAbility = (id: string, ex: boolean) => ({
   id, kind: ex ? 'auto' as const : 'summon' as const, text: card.text, ex, zones: ex ? ['damage' as const] : ['hand' as const],
   cost: { cp: ex ? 0 : card.cost, elements: ex ? [] : card.elements, dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-  modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
-  triggers: [], fieldEffects: [], replacements: [],
+  modes: [], targets: { min: 1, max: 1 },
+  fieldEffects: [], replacements: [],
   steps: { resolve: { payloadSchema: z.null(), run: ({ frame }: ResolutionContext) => ({
     batches: [{ simultaneous: false, operations: [{ kind: 'move' as const, object: frame.targets[0]!, to: 'hand' as const, index: null }] }], choice: null, next: null,
   }) } },

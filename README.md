@@ -13,29 +13,30 @@ Open the localhost address printed by Vite. Choose a deck for each player. Enter
 
 ## Playtest status
 
-The table supports opening choices, priority, Character casting, the Commander Zone, Commander tax, Forward attacks, blocking, a set of stack effects, saved decks, match recovery, JSON save export/import, and offline reload. The current interaction follows Arena's bottom hand fan, playable-card highlights, click/drag casting, target arrows, and bottom-left choice dock.
+The table supports opening choices, Character casting, Command Zone tax, Forward attacks, a supported set of effects, saves, and offline reload. Smart Priority passes when no action is available, skips its owner's initial response to a newly played effect, and removes empty combat decisions. Use **Hold Priority** to retain a response window. Click cards to choose payment sources; right-click or select a card and press **I** to inspect it.
 
-The first three MVP milestones are still under implementation. See the [second audit repair plan](docs/superpowers/plans/2026-10-07-dissidia-mvp-second-audit-repair.md), [second branch audit](docs/superpowers/audits/2026-10-07-mvp-second-branch-audit.md), and [rules coverage](docs/rules-coverage.md) for completed behavior and open acceptance cases. Do not use the current build as a complete FFTCG rules authority.
+The catalog remains placeholder-only and does not reproduce official FFTCG cards. See [playtesting instructions](docs/playtesting.md) for current controls and limitations. Historical audits and rules references remain in `docs/`.
 
 ## Verify
 
 ```powershell
 npm run typecheck
 npm run check:boundaries
-npm run check:coverage
 npm test
 npm run build
 npm run test:e2e
+npm run test:ui-design
+npm run test:release
 ```
 
-The monitored UI design gate captures both desktop sizes in normal and reduced motion. It checks hand reachability, player/type battlefield rows, control overlap and size, choice layout, and deck search focus:
+The UI behavior suite checks 1280×720 and 1920×1080 with normal and reduced motion. It relies on interaction and accessibility behavior, not screenshot baselines:
 
 ```powershell
 npm run test:ui-design
 npm run test:ui-design:report
 ```
 
-The suite writes screenshots, traces, and an HTML report under `test-results/ui-design` and `playwright-report/ui-design`. Keep the browser failures as repair evidence; do not update snapshots to hide a layout regression. See the [second audit](docs/superpowers/audits/2026-10-07-mvp-second-branch-audit.md) and [repair design](docs/superpowers/specs/2026-10-07-dissidia-mvp-second-audit-repair-design.md).
+GitHub Actions runs on pushes to `main` and manual dispatch. Browser failure traces and screenshots are retained as test artifacts.
 
 For offline installation, run `npm run build` and serve the `dist` folder. Open it once while online, wait for **Ready for offline play**, then reload with network disabled. The service worker caches this build locally.
 

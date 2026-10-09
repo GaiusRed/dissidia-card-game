@@ -14,7 +14,7 @@ export function castCharacter(state: MatchState, seat: Seat, source: ObjectId, p
   const commander = state.commanders[card.owner];
   const fromCommanderZone = card.zone === 'commander' && commander.instance === card.instance;
   if (seat !== card.owner || (card.zone !== 'hand' && !fromCommanderZone)) {
-    return [error('ILLEGAL_SOURCE_ZONE', 'A Character must be cast from your hand or its Commander Zone.')];
+    return [error('ILLEGAL_SOURCE_ZONE', 'A Character must be cast from your hand or its Command Zone.')];
   }
   if (definition.type === 'Summon') return [error('NOT_A_CHARACTER', 'A Summon does not enter the field as a Character.')];
   if (state.result || state.choice || state.priority !== seat || state.active !== seat ||

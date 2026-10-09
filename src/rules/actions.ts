@@ -1,9 +1,8 @@
-import type { ActionOffer, CastAccess, ChoiceOption, Element, EngineContext, MatchState, RuleError, Seat } from './types';
+import type { ActionOffer, CastAccess, Element, EngineContext, MatchState, RuleError, Seat } from './types';
 import { legalAbilityTargets, legalSummonTargets } from './targets';
 import { hasKeyword } from './continuous';
 import { isReadyForDullCost } from './activation';
 
-const other = (seat: Seat): Seat => seat === 0 ? 1 : 0;
 const error = (code: string, message: string): RuleError => ({ code, message });
 const find = (state: MatchState, object: string) => Object.values(state.cards).find(card => card.object === object);
 const isLightDark = (elements: Element[]) => elements.some(element => element === 'Light' || element === 'Dark');

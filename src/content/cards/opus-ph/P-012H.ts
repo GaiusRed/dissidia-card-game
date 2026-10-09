@@ -38,8 +38,8 @@ export const card: CardDefinition = {
 export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [{
   id: 'banner-smith-field', kind: 'field', text: card.abilities[0]!.text, ex: false, zones: ['field'],
   cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-  modes: [], targets: { min: 0, max: 0, distinct: true, accepts: () => true },
-  triggers: [], fieldEffects: [{ effects: (state: DeepReadonly<MatchState>, source: DeepReadonly<CardObject>, catalog) =>
+  modes: [], targets: { min: 0, max: 0 },
+  fieldEffects: [{ effects: (state: DeepReadonly<MatchState>, source: DeepReadonly<CardObject>, catalog) =>
     state.field.map(instance => state.cards[instance]!).filter(target => target.controller === source.controller &&
       catalog[target.card]?.type === 'Forward' && catalog[target.card]!.elements.includes('Fire'))
       .map(target => ({ kind: 'power' as const, source: source.object, object: target.object,

@@ -32,8 +32,8 @@ export const script: CardScript = {
   abilities: [{
     id: 'war-cry', kind: 'summon', text: card.text, ex: false, zones: ['hand'],
     cost: { cp: card.cost, elements: card.elements, dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-    modes: [], targets: { min: 1, max: 1, distinct: true, accepts: () => true },
-    triggers: [], fieldEffects: [], replacements: [],
+    modes: [], targets: { min: 1, max: 1 },
+    fieldEffects: [], replacements: [],
     steps: { resolve: {
       payloadSchema: z.null(),
       run: ({ state, frame }) => {

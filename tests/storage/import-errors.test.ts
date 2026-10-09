@@ -73,7 +73,6 @@ describe('save import errors', () => {
     const prior = createSave(fixture({}).state, []);
     await saveRecord(prior);
     const before = await loadRecord();
-    const commander = base.origin.commanders[0].instance;
     const nonCommander = base.origin.zones[0].deck[0]!;
 
     const ownerTamper = structuredClone(base);

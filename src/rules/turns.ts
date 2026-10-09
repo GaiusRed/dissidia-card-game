@@ -1,5 +1,5 @@
 import { moveCard } from './zones';
-import type { EngineContext, MatchState, RuleEvent, Seat } from './types';
+import type { EngineContext, MatchState, RuleEvent } from './types';
 
 function event(state: MatchState, type: string, data: RuleEvent['data']): RuleEvent {
   return { id: 'event-' + state.nextId++, type, data };

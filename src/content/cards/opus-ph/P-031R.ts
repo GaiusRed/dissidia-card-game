@@ -2,7 +2,6 @@ import type { CardDefinition } from '../../../rules/types';
 import type { CardScript } from '../../../rules/contracts/card-script';
 import type { ResumeRef, ResolutionContext } from '../../../rules/contracts/execution';
 import { z } from 'zod';
-import { selfEntryTrigger } from '../../shared/script-helpers';
 
 export const card: CardDefinition = {
   "number": "P-031R",
@@ -53,8 +52,8 @@ const archiveDiscardStep = {
 export const script: CardScript = { metadata: card, behaviorVersion: '1', abilities: [{
   id: 'archive-keeper-enter', kind: 'auto', text: card.abilities[0]!.text, ex: true, zones: ['field', 'damage'],
   cost: { cp: 0, elements: [], dullSource: false, sacrificeSource: false, sameNameDiscard: false },
-  modes: [], targets: { min: 0, max: 0, distinct: true, accepts: () => true },
-  triggers: [selfEntryTrigger], fieldEffects: [], replacements: [],
+  modes: [], targets: { min: 0, max: 0 },
+  fieldEffects: [], replacements: [],
   steps: {
     resolve: { payloadSchema: z.null(), run: (context: ResolutionContext) => context.frame.mode === 'ex'
       ? { batches: [], choice: { seat: context.frame.controller, kind: 'confirm',

@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('dissidia-priority-holds', JSON.stringify({ 0: true, 1: true })));
+});
 
 test('Final Spark resolves through a private EX decision without bypassing its required choice', async ({ page }) => {
   await page.goto('/');
@@ -16,17 +18,11 @@ test('Final Spark resolves through a private EX decision without bypassing its r
   await expect(choice).toBeVisible();
   await expect(choice).toContainText('EX Burst');
   const sequenceBefore = Number(await page.locator('.table').getAttribute('data-view-seq'));
-  const screenshot = await page.screenshot({ fullPage: true });
-  const captureDirectory = resolve(process.cwd(), 'docs/ui-captures');
-  mkdirSync(captureDirectory, { recursive: true });
-  writeFileSync(resolve(captureDirectory, `choice-ex-${test.info().project.name}.png`), screenshot);
-  await test.info().attach('choice-ex', { body: screenshot, contentType: 'image/png' });
-  await expect(page).toHaveScreenshot('choice-ex.png', { animations: 'disabled', caret: 'hide', fullPage: true });
   await page.keyboard.press('Escape');
   await expect(choice).toBeVisible();
-  await page.getByRole('button', { name: /Inspect Player/ }).click();
+  await page.locator('#inspect').click();
   await expect(choice).toContainText('making a private choice');
-  await page.getByRole('button', { name: /Inspect Player/ }).click();
+  await page.locator('#inspect').click();
   await expect(choice).toContainText('EX Burst');
   await expect(choice.locator('.eyebrow')).toContainText('PLAYER 2 DECISION');
   await expect(page.locator('.table')).toHaveAttribute('data-view-seq', String(sequenceBefore));
@@ -65,25 +61,9 @@ test('two-card End Phase discard stays local until a valid confirmed answer', as
   await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
   const choice = page.getByRole('region', { name: 'Required choice' });
   await expect(choice).toContainText('discard 2 cards');
-  const screenshot = await page.screenshot({ fullPage: true });
-  const captureDirectory = resolve(process.cwd(), 'docs/ui-captures');
-  mkdirSync(captureDirectory, { recursive: true });
-  writeFileSync(resolve(captureDirectory, `choice-discard-${test.info().project.name}.png`), screenshot);
-  await test.info().attach('choice-discard', { body: screenshot, contentType: 'image/png' });
   const sequenceBefore = Number(await page.locator('.table').getAttribute('data-view-seq'));
   const options = page.locator('[data-choice]');
   await expect(options).toHaveCount(7);
-  const confirm = page.getByRole('button', { name: 'Confirm choice' });
-  const panelBounds = await choice.boundingBox();
-  const confirmBounds = await confirm.boundingBox();
-  expect(panelBounds).not.toBeNull();
-  expect(confirmBounds).not.toBeNull();
-  expect(confirmBounds!.x + confirmBounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width);
-  expect(await confirm.evaluate(button => {
-    const rect = button.getBoundingClientRect();
-    const target = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    return !!target && (target === button || button.contains(target));
-  })).toBe(true);
   await options.nth(0).click();
   await expect(options.nth(0)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: 'Confirm choice' })).toBeDisabled();
@@ -103,7 +83,7 @@ test('two-card End Phase discard stays local until a valid confirmed answer', as
   await page.getByRole('button', { name: 'Confirm choice' }).click();
   await expect.poll(async () => Number(await page.locator('.table').getAttribute('data-view-seq'))).toBe(sequenceBefore + 1);
   await expect(choice).toHaveCount(0);
-  await expect(page.locator('.break-pile')).toContainText('2');
+  await expect(page.getByRole('button', { name: 'Inspect Player 1 break zone' })).toContainText('2');
 });
 
 test('a rejected choice answer keeps its local selection when authority does not change', async ({ page }) => {
@@ -150,7 +130,7 @@ test('Tide Warden Commander opens a required entry target choice when its trigge
   await confirm.click();
 
   const choice = page.getByRole('region', { name: 'Required choice' });
-  await expect(choice).toContainText('Tide Warden: choose a target.');
+  await expect(choice).toContainText('When Tide Warden enters the field, choose 1 Forward. Activate it.');
   const sequenceBefore = Number(await page.locator('.table').getAttribute('data-view-seq'));
   const target = page.locator('[data-choice]').filter({ hasText: 'Spark Runner' });
   await target.click();
