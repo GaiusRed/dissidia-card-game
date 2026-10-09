@@ -24,9 +24,16 @@ describe('shared desktop table layout', () => {
       }
     }
     expect(overlaps(layout.choices, layout.progress)).toBe(false);
-    expect(layout.rows.opponentBackups.y).toBeLessThan(layout.rows.opponentForwards.y);
+    if (height <= 800) {
+      expect(layout.rows.opponentBackups.y).toBe(layout.rows.opponentForwards.y);
+      expect(layout.rows.yourBackups.y).toBe(layout.rows.yourForwards.y);
+      expect(layout.rows.opponentBackups.x).toBeGreaterThan(layout.rows.opponentForwards.x);
+      expect(layout.rows.yourBackups.x).toBeGreaterThan(layout.rows.yourForwards.x);
+    } else {
+      expect(layout.rows.opponentBackups.y).toBeLessThan(layout.rows.opponentForwards.y);
+      expect(layout.rows.yourForwards.y).toBeLessThan(layout.rows.yourBackups.y);
+    }
     expect(layout.rows.opponentForwards.y).toBeLessThan(layout.rows.yourForwards.y);
-    expect(layout.rows.yourForwards.y).toBeLessThan(layout.rows.yourBackups.y);
     const battlefieldCards = Object.values(layout.rows);
     for (let first = 0; first < battlefieldCards.length; first += 1) {
       for (let second = first + 1; second < battlefieldCards.length; second += 1) {

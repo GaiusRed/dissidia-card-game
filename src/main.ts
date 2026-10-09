@@ -61,6 +61,7 @@ let autoScheduledKey: string | null = null;
 let endTurnRequest: EndTurnRequest | null = null;
 let logVisible = true;
 let logScrollTop = 0;
+let logScrollHeight = 0;
 let logFollowing = true;
 function restorePriorityHolds(): Record<Seat, boolean> {
   try {
@@ -567,7 +568,8 @@ function render(): void {
   const previousLog = root.querySelector<HTMLElement>('.event-log [role="log"]');
   if (previousLog) {
     logScrollTop = previousLog.scrollTop;
-    logFollowing = previousLog.scrollHeight - previousLog.clientHeight - previousLog.scrollTop < 24;
+    logScrollHeight = previousLog.scrollHeight;
+    logFollowing = previousLog.scrollTop < 24;
   }
   root.classList.toggle('log-hidden', !logVisible);
   root.classList.toggle('targeting-active', castingSource !== null || abilityDraft !== null);
@@ -686,7 +688,7 @@ function render(): void {
       if (automaticPass) previous.text = `${previous.autoSeats.map(value => `Player ${value}`).join(' and ')} passed priority automatically.`;
     } else groupedLog.push({ event, text, count: 1, autoSeats: seat === null ? [] : [seat] });
   }
-  const logItems = groupedLog.map(({ event, text, count }) => `<li data-rule-event="${event.id}">${text}${count > 1 ? ` × ${count}` : ''}</li>`).join('');
+  const logItems = groupedLog.reverse().map(({ event, text, count }) => `<li data-rule-event="${event.id}">${text}${count > 1 ? ` × ${count}` : ''}</li>`).join('');
   const stackEntries = state.stack.map((item, index) => {
     const definition = opusPh[item.lastKnown.card];
     const ability = definition?.abilities.find(candidate => candidate.id === item.ability);
@@ -821,7 +823,7 @@ function render(): void {
     ${state.result ? `<div class="result-overlay"><h2>${state.result.winner === null ? 'Draw game' : `Player ${state.result.winner + 1} wins`}</h2><p>${state.result.reason === 'damage' ? 'Seven damage' : state.result.reason}</p><button class="primary" id="new-match">New match</button><button class="top-button" id="result-export-save">Export save</button><button class="soft" id="result-menu">Return to menu</button></div>` : ''}<div class="toast" role="status">${notice || host.persistenceError || ''}${host.persistenceError ? '<button class="soft small" id="retry-save">Retry save</button>' : ''}</div>`;
 
   const logScroller = root.querySelector<HTMLElement>('.event-log [role="log"]');
-  if (logScroller) logScroller.scrollTop = logFollowing ? logScroller.scrollHeight : logScrollTop;
+  if (logScroller) logScroller.scrollTop = logFollowing ? 0 : logScrollTop + logScroller.scrollHeight - logScrollHeight;
   root.querySelector('#toggle-log')?.addEventListener('click', () => { logVisible = !logVisible; render(); });
   root.querySelector('#clear-selection')?.addEventListener('click', () => { selectedObject = null; render(); });
   root.querySelector('#cancel-end-turn')?.addEventListener('click', () => { endTurnRequest = null; autoScheduledKey = null; render(); });
@@ -989,6 +991,8 @@ function render(): void {
       } else { selectedObject = sourceId; notice = `Choose one more target for ${opusPh[source.card]!.name}.`; render(); }
       return;
     }
+    // A draft owns selection until it is confirmed or cancelled.
+    if (actionDraft) return;
     if (choice?.kind === 'order') {
       orderSelection = toggleSelection(orderSelection, object, choice.max);
     } else if (choice && choice.options.some(option => option.id === object)) {

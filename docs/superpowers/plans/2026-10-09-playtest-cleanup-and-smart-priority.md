@@ -699,3 +699,27 @@ Use existing rules and projections. Do not add Markdown assertions or screenshot
 - npm run dev started successfully; browser checks used its local server.
 
 End Turn affects only the requesting player's passes. Opponent legal responses remain available. Required choices and player interactions cancel the request. No phase is removed from the rules engine.
+
+
+## Final card and log adjustments - 2026-10-09
+
+- [x] Keep ineligible payment clicks from changing ordinary selection. Use gold for ordinary selection and blue with a marker for payment.
+- [x] On short screens, place each player's Forwards and Backups side by side so portrait miniatures remain readable without a vertical scrollbar. Keep stacked rows on taller screens.
+- [x] Use a 63:88 portrait ratio for hand, public-zone, field, Command Zone, and inspected faces. Preserve image proportions with contain sizing.
+- [x] Fit every label in both public-zone grids without hiding the zone name.
+- [x] Present grouped logs newest first. Follow the top while viewing current events; preserve the history position when new events arrive. This replaces the chronological presentation above.
+- [x] Verify payment, geometry, labels, log order, clean installation, build, unit tests, browser tests, and dev startup.
+
+FFTCG reference size: 63 x 88 mm, listed by Fantasy Cards Authenticator under standard cards, including FINAL FANTASY TCG: https://fantasygrading.com/en/cards-we-grade/.
+
+
+### Final adjustment verification
+
+- npm ci completed with 371 packages and zero reported vulnerabilities.
+- Build, all TypeScript configurations, and rules boundaries passed.
+- All 367 unit tests passed in 54 files with two workers.
+- All 184 UI tests passed across both desktop sizes and both motion settings.
+- All 21 end-to-end tests passed, including complete offline duels and exported replay at both desktop sizes.
+- npm run dev started successfully. Its page returned HTTP 200, and visual review confirmed the short-screen battlefield and portrait inspector.
+- An overlapping browser run initially removed another suite's trace artifacts. The final runs used separate output directories and passed.
+- Screenshots and reports remain ignored. User-owned .vscode files remain outside this change.

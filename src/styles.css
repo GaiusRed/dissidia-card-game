@@ -52,7 +52,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .hand-fan{pointer-events:none;overflow-x:auto;overflow-y:visible;scroll-behavior:auto}.hand-fan .card{pointer-events:auto;transition:box-shadow .14s,border-color .14s}.hand-fan .card:hover,.hand-fan .card.selected{transition:none;transform:translateY(-18px) scale(1.04)}.selected-preview button{height:38px!important;min-height:38px!important;max-height:38px!important;align-self:stretch!important;line-height:1.2;padding:6px 10px!important}
 .hand-zone{pointer-events:none}.hand-zone .hand-fan,.hand-zone .hand-fan .card{pointer-events:auto}.hand-zone>.zone-label{pointer-events:none}.other-zone-tray{pointer-events:auto}
 .hand-fan:empty{pointer-events:none}
-.hand-zone{height:132px}.hand-fan{height:116px;overflow-x:auto;overflow-y:hidden}.hand-fan .card,.hand-fan .card:hover,.hand-fan .card.selected{position:relative;transform:rotate(var(--fan,0deg));transition:box-shadow .14s,border-color .14s;z-index:auto}.hand-fan .card:hover,.hand-fan .card.selected{z-index:4;box-shadow:0 0 0 2px rgba(35,93,136,.3),0 6px 14px rgba(23,43,58,.2)}
+.hand-zone{height:132px}.hand-fan{height:116px;overflow-x:auto;overflow-y:hidden}.hand-fan .card,.hand-fan .card:hover,.hand-fan .card.selected{position:relative;transform:rotate(var(--fan,0deg));transition:box-shadow .14s,border-color .14s;z-index:auto}.hand-fan .card:hover,.hand-fan .card.selected{z-index:4;box-shadow:0 0 0 2px rgba(155,106,37,.3),0 6px 14px rgba(23,43,58,.2)}
 @media(max-height:760px){.hand-zone{height:132px}.hand-fan{height:116px}.hand-fan .card,.hand-fan .card:hover,.hand-fan .card.selected{transform:rotate(var(--fan,0deg))}}
 .hand-fan .card,.hand-fan .card:hover,.hand-fan .card.selected{transform:none!important}
 .field-row{position:relative;padding-top:14px}.field-row::before{position:absolute;top:3px;left:8px;margin:0;transform:none;align-self:auto}
@@ -83,10 +83,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .battlefield{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(0,1fr));align-items:stretch;justify-content:stretch;gap:0;overflow:visible;min-height:0}
 .field-seat{min-height:0;height:auto;grid-template-rows:repeat(2,minmax(0,1fr));row-gap:0;padding:0}
 .field-row,.field-row.empty,.field-row:not(.empty){height:auto;min-height:0;padding:14px 6px 4px}
-.field-row .card{height:min(120px,calc(var(--row-height) - 20px));min-height:0}
+.field-row .card{height:min(120px,calc(var(--row-height) - 20px));width:calc(min(120px,calc(var(--row-height) - 20px)) * 63 / 88);min-height:0}
 .opponent-zones{top:0;bottom:0;align-items:center}
-.opponent-zones .card{width:64px;height:72px}
-@media(min-width:1600px){.opponent-zones .card{width:68px;height:90px}}
+.opponent-zones .card{width:calc(72px * 63 / 88);height:72px}
+@media(min-width:1600px){.opponent-zones .card{width:calc(90px * 63 / 88);height:90px}}
 :root{--seat-one:#235d88;--seat-two:#a52b32}
 .field-seat[data-seat="0"] .field-seat-label{color:var(--seat-one)}
 .field-seat[data-seat="0"] .field-row{border-left:4px solid var(--seat-one)}
@@ -112,3 +112,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .hand-fan-spread .card{margin-left:-6px!important}
 .hand-zone{left:var(--hand-left)}
 .result-overlay button{width:150px;height:38px;min-height:38px;display:flex;align-items:center;justify-content:center;padding:6px 10px;line-height:1.2}
+
+.own-zones .card{height:auto;aspect-ratio:63/88}
+
+/* Short tables keep portrait cards readable without vertical scrolling. */
+@media(max-height:800px){
+  .field-seat{grid-template-columns:74px minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+  .field-seat-label{grid-row:1}
+  .field-seat>.field-row.forwards{grid-column:2;grid-row:1}
+  .field-seat>.field-row.backups{grid-column:3;grid-row:1}
+}

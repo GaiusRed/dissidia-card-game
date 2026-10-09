@@ -51,6 +51,8 @@ Maintain the existing TypeScript structure and bright visual style. Keep shared 
 
 The current catalog is placeholder-only. Set manifests list each card script once. Every registered script must pass registry integrity checks before its metadata can become playable. Keep source review dates with each real set and use command-level behavior tests for every new card mechanic.
 
+Render card faces in the 63:88 portrait ratio. Real card images replace the entire face. Use contain sizing; do not stretch or crop a full card scan. Keep card numbers in inspection details.
+
 ## Change hygiene
 
 - Continue on the requested branch. Do not create another branch or worktree without a request.

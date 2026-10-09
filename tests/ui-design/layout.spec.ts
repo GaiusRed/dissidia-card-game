@@ -195,8 +195,8 @@ test('match log retains older events in its scrollable history', async ({ page }
     if (await pass.count()) await pass.click();
   }
   await expect(events).not.toHaveCount(0);
-  const oldest = await events.first().textContent();
-  const newest = await events.last().textContent();
+  const newest = await events.first().textContent();
+  const oldest = await events.last().textContent();
   expect(oldest).toBeTruthy();
   expect(newest).toBeTruthy();
   await events.first().scrollIntoViewIfNeeded();

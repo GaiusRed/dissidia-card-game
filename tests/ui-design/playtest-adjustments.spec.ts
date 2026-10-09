@@ -49,3 +49,61 @@ test('log can be hidden and reopened without losing the current turn header', as
   await page.getByRole('button', { name: 'Show log', exact: true }).click();
   await expect(page.locator('.log-header')).toContainText('Turn 1');
 });
+
+
+test('card faces stay portrait and pile labels fit their buttons', async ({ page }) => {
+  await start(page);
+  const card = page.locator('.hand-fan [data-card]').first();
+  await expect(card).toBeVisible();
+  const bounds = await card.boundingBox();
+  expect(bounds!.width / bounds!.height).toBeCloseTo(63 / 88, 2);
+  for (const label of await page.locator('.zone-pile span').all()) {
+    const size = await label.evaluate(node => ({ visible: node.clientWidth, content: node.scrollWidth }));
+    expect(size.content).toBeLessThanOrEqual(size.visible + 1);
+  }
+  await card.click({ button: 'right' });
+  await expect(page.locator('.inspector-face')).toBeVisible();
+  const face = await page.locator('.inspector-face').boundingBox();
+  expect(face!.width / face!.height).toBeCloseTo(63 / 88, 2);
+  await page.screenshot({ path: `test-results/portrait-${test.info().project.name}.png` });
+});
+
+test('ineligible payment clicks do not replace the card being cast', async ({ page }) => {
+  await start(page);
+  await page.locator('.hand-fan .card.playable').first().click();
+  const selected = await page.locator('.hand-fan .card.selected').getAttribute('data-card');
+  await page.getByRole('button', { name: /Review (cast|Summon)/ }).click();
+  const payment = page.locator('.payment-selected');
+  const before = await payment.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-card')));
+  const ineligible = page.locator('.own-zones .card');
+  await ineligible.click();
+  await expect(ineligible).not.toHaveClass(/selected/);
+  await expect(page.locator('.hand-fan .card.selected')).toHaveAttribute('data-card', selected!);
+  expect(await payment.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-card')))).toEqual(before);
+});
+
+test('the match log presents new events above older history', async ({ page }) => {
+  await start(page);
+  const entries = page.locator('.event-log [role="log"] li');
+  const before = await entries.first().getAttribute('data-rule-event');
+  await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
+  await expect(entries.first()).toContainText('passed priority');
+  expect(await entries.first().getAttribute('data-rule-event')).not.toBe(before);
+  expect(await page.locator('.event-log [role="log"]').evaluate(node => node.scrollTop)).toBe(0);
+});
+
+
+test('field cards remain portrait and readable in the available battlefield', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#scenario-select').selectOption('battlefield-card-status');
+  await page.getByRole('button', { name: 'Start scenario', exact: true }).click();
+  const cards = page.locator('.battlefield .card');
+  await expect(cards.first()).toBeVisible();
+  for (const card of await cards.all()) {
+    const size = await card.evaluate(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,
+      portraitWidth: (node as HTMLElement).offsetWidth, portraitHeight: (node as HTMLElement).offsetHeight }));
+    expect(size.portraitWidth / size.portraitHeight).toBeCloseTo(63 / 88, 1);
+    expect(size.portraitWidth).toBeGreaterThanOrEqual(60);
+  }
+  await page.screenshot({ path: `playwright-report/visual/field-${test.info().project.name}.png` });
+});

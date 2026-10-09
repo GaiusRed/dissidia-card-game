@@ -20,8 +20,8 @@ export function computeTableLayout(width: number, height: number): TableLayout {
   const headerHeight = Math.min(58, viewportHeight);
   const footerHeight = Math.min(viewportHeight - headerHeight, clamp(viewportHeight * 0.145, 124, 156));
   const tableHeight = Math.max(0, viewportHeight - headerHeight - footerHeight);
-  const opponentHeight = Math.min(tableHeight, clamp(tableHeight * 0.13, 72, 100));
-  const currentHeight = Math.min(Math.max(0, tableHeight - opponentHeight), clamp(tableHeight * 0.22, 164, 180));
+  const opponentHeight = Math.min(tableHeight, clamp(tableHeight * 0.13, 96, 100));
+  const currentHeight = Math.min(Math.max(0, tableHeight - opponentHeight), clamp(tableHeight * 0.25, 188, 204));
   const fieldHeight = Math.max(0, tableHeight - opponentHeight - currentHeight);
   const header = { x: 0, y: 0, width: viewportWidth, height: headerHeight };
   const opponent = { x: 0, y: header.y + header.height, width: viewportWidth, height: opponentHeight };
@@ -40,11 +40,20 @@ export function computeTableLayout(width: number, height: number): TableLayout {
     width: railWidth, height: field.height * 0.6 };
   const fieldTopInset = Math.min(field.height, 26);
   const fieldBottomInset = Math.min(field.height - fieldTopInset, 8);
-  const rowHeight = Math.max(0, (field.height - fieldTopInset - fieldBottomInset) / 4);
+  const compactField = viewportHeight <= 800;
+  const rowHeight = Math.max(0, (field.height - fieldTopInset - fieldBottomInset) / (compactField ? 2 : 4));
   const rowWidth = Math.max(0, stack.x - inset - 12);
   const makeRow = (index: number): Rect => ({ x: inset, y: field.y + fieldTopInset + rowHeight * index,
     width: rowWidth, height: rowHeight });
-  const rows = {
+  const halfWidth = rowWidth / 2;
+  const compactRow = (seat: number, backup: boolean): Rect => ({
+    x: inset + (backup ? halfWidth : 0), y: field.y + fieldTopInset + rowHeight * seat,
+    width: halfWidth, height: rowHeight,
+  });
+  const rows = compactField ? {
+    opponentBackups: compactRow(0, true), opponentForwards: compactRow(0, false),
+    yourForwards: compactRow(1, false), yourBackups: compactRow(1, true),
+  } : {
     opponentBackups: makeRow(0), opponentForwards: makeRow(1),
     yourForwards: makeRow(2), yourBackups: makeRow(3),
   };
