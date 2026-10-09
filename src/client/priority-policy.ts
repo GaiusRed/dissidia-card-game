@@ -1,13 +1,19 @@
 import type { MatchView } from '../host/protocol';
 import type { Intent } from '../rules/types';
 
-export type SmartPriorityReason = 'no-action' | 'own-response' | 'no-blockers';
+export type SmartPriorityReason = 'no-action' | 'own-response' | 'no-blockers' | 'end-turn';
 export interface SmartPriorityAction { intent: Intent; reason: SmartPriorityReason }
+export interface EndTurnRequest { generation: number; turn: number; seat: 0 | 1 }
 
 /** Select a narrow, rules-safe automatic action from the acting seat's current host projection. */
-export function chooseSmartPriorityAction(view: MatchView, hold: boolean, paused = false): SmartPriorityAction | null {
+export function chooseSmartPriorityAction(view: MatchView, hold: boolean, paused = false, endTurn: EndTurnRequest | null = null): SmartPriorityAction | null {
   if (paused || hold || view.result || view.choice || view.priority === null || view.decisionSeat !== view.priority) return null;
   if (!view.actions.some(action => action.kind === 'pass')) return null;
+
+  if (endTurn?.generation === view.generation && endTurn.turn === view.turn &&
+      endTurn.seat === view.active && endTurn.seat === view.priority && !view.combat) {
+    return { intent: { kind: 'pass' }, reason: 'end-turn' };
+  }
 
   if (view.phase === 'attack' && view.combat?.step === 'block' &&
       !view.actions.some(action => action.kind === 'block')) {

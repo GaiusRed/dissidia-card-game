@@ -72,31 +72,18 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 @media(min-width:1600px){.field-seat{grid-template-columns:90px minmax(0,1fr);}}
 .payment-draft{display:flex;flex-direction:column;gap:4px;width:min(100%,560px);padding:5px 7px;border:1px solid var(--line);border-radius:5px;background:rgba(13,18,24,.62)}.payment-summary{display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap;font-size:.59rem;line-height:1.25;color:var(--text-muted)}.payment-summary b{color:var(--text);font-size:.65rem}.payment-error{color:#ffd0b9}.payment-sources{display:flex;align-items:center;flex-wrap:wrap;gap:3px;max-height:58px;overflow:auto}.selected-preview .payment-source{height:28px!important;min-height:28px!important;max-height:28px!important;min-width:0!important;flex:0 1 auto!important;padding:4px 7px!important;font-size:.56rem!important;white-space:nowrap}.special-discard{display:flex;align-items:center;gap:6px;font-size:.59rem;color:var(--text-muted)}.special-discard select{max-width:170px;min-height:28px;background:var(--panel-raised);color:var(--text);border:1px solid var(--line);border-radius:4px}
 .payment-draft{background:#f5f8fb;border-color:#bccbd8;color:#26394a;flex:0 1 560px;max-width:560px}.payment-summary{color:#45596c}.payment-summary b{color:#20384d}.payment-error{color:#a13520}.special-discard{color:#45596c}.special-discard select{background:#fff;color:#20384d;border-color:#aebdca}.selected-preview>button:not(.payment-source){flex:0 1 210px!important;width:210px;max-width:210px;min-width:180px!important;align-self:flex-start!important}
-.battlefield{justify-content:flex-start;overflow-y:auto;overscroll-behavior:contain}
-.field-seat{flex:0 0 auto;grid-template-rows:minmax(28px,auto) minmax(28px,auto)}
-.field-row{min-height:28px}
-.field-row:not(.empty){min-height:108px}
-.field-row.empty{height:28px;min-height:28px}
-@media(min-width:1600px){.field-row{padding-top:18px}.field-row:not(.empty){min-height:143px}}
-@media(max-height:760px){.field-seat{padding-bottom:1px;grid-template-rows:minmax(10px,auto) minmax(10px,auto)}.field-row{padding-top:10px}.field-row:not(.empty){min-height:76px}.field-row.empty{height:10px;min-height:10px}.field-row.empty .row-empty{display:none}.field-row .card{height:64px}}
-.center-table{padding-bottom:32px}
-@media(min-width:1600px){.center-table{padding-bottom:68px}}
-
-/* The shared geometry model supplies one set of dimensions to CSS and Phaser. */
+/* Viewport geometry reserves the hand and controls. Field rows use the available grid height. */
 .topbar{height:var(--header-height);min-height:var(--header-height)}
-.table{grid-template-rows:var(--opponent-height) minmax(0,1fr) var(--current-height)}
-.bottom-bar{height:var(--footer-height);min-height:var(--footer-height);flex:none}
-.field-seat{flex:0 0 calc(var(--row-height) * 2);grid-template-rows:repeat(2,minmax(0,var(--row-height)));row-gap:0;padding:0}
-.field-row,.field-row.empty{height:var(--row-height);min-height:var(--row-height)}
-.field-row:not(.empty){height:var(--row-height);min-height:var(--row-height)}
 .table{display:grid;grid-template-rows:var(--opponent-height) minmax(0,1fr) var(--current-height);gap:0;padding:0 3vw}
+.bottom-bar{height:var(--footer-height);min-height:var(--footer-height);flex:none}
 .player-row,.opponent,.current{min-height:0;padding-top:0;padding-bottom:0}
-.opponent{align-items:center}
-.current{align-items:stretch}
-.center-table{min-height:0;padding:var(--field-top-inset) 11% var(--field-bottom-inset)}
+.opponent{align-items:center}.current{align-items:stretch}
+.center-table{min-height:0;padding:var(--field-top-inset) 2% var(--field-bottom-inset)}
 .center-caption{position:absolute;top:5px;left:0;right:0;margin:0}
-.battlefield{flex:1;min-height:0;align-content:flex-start}
-.field-row{padding:12px 6px 0}
+.battlefield{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(0,1fr));align-items:stretch;justify-content:stretch;gap:0;overflow:visible;min-height:0}
+.field-seat{min-height:0;height:auto;grid-template-rows:repeat(2,minmax(0,1fr));row-gap:0;padding:0}
+.field-row,.field-row.empty,.field-row:not(.empty){height:auto;min-height:0;padding:14px 6px 4px}
+.field-row .card{height:min(120px,calc(var(--row-height) - 20px));min-height:0}
 .opponent-zones{top:0;bottom:0;align-items:center}
 .opponent-zones .card{width:64px;height:72px}
 @media(min-width:1600px){.opponent-zones .card{width:68px;height:90px}}

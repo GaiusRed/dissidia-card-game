@@ -7,7 +7,7 @@ test('accepted cast shows the same final state with motion on and off', async ({
   await page.getByRole('button', { name: 'Take first turn', exact: true }).click();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
-  await expect(page.getByText('MAIN1', { exact: true })).toBeVisible();
+  await expect(page.locator('.table')).toHaveAttribute('data-phase', 'main1');
 
   const sequence = Number(await page.locator('.table').getAttribute('data-view-seq'));
   await page.locator('.hand-fan [data-card]').filter({ hasText: 'Ash Recruit' }).click();

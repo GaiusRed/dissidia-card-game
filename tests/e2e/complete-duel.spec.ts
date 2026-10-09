@@ -59,7 +59,7 @@ async function makeAvailableForwardOrBackup(page: Page, _seat: number): Promise<
   await review.click();
   const confirm = page.getByRole('button', { name: /Confirm cast/ });
   if (!(await confirm.isEnabled())) {
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Cancel action', exact: true }).click();
     return false;
   }
   await submitVisibleCommand(page, confirm);
@@ -150,12 +150,10 @@ async function playDuel(page: Page, info: TestInfo, viewport: { width: number; h
       const currentSeat = Number(current?.dataset.seat);
       const opponentIsActive = opponent?.querySelector('.player-info small')?.textContent?.includes('ACTIVE PLAYER');
       return { seat: currentSeat, activeSeat: opponentIsActive ? 1 - currentSeat : currentSeat,
-        header: document.querySelector('.match-meta')?.textContent ?? '' };
+        turn: Number(document.querySelector<HTMLElement>('.table')?.dataset.turn), phase: document.querySelector<HTMLElement>('.table')?.dataset.phase?.toUpperCase() };
     });
     const { seat, activeSeat } = visibleState;
-    const header = visibleState.header;
-    const turn = Number(header.match(/TURN (\d+)/)?.[1] ?? 0);
-    const phase = header.split('·')[1]?.trim();
+    const { turn, phase } = visibleState;
     const turnKey = `${turn}:${seat}`;
 
     if (phase === 'MAIN1' && seat === activeSeat && !castsThisTurn.has(turnKey)) {

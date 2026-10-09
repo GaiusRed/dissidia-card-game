@@ -201,18 +201,18 @@ html,body{background:var(--canvas);color:var(--text)}
   .choice-panel{position:fixed;left:auto;right:calc(var(--activity-width) + 16px);bottom:var(--footer-height,112px);top:auto;transform:none;width:min(680px,calc(100vw - var(--activity-width) - 48px));height:auto;max-height:30vh;overflow:auto;border-radius:8px;padding:12px 16px;z-index:15}
   .phase-controls{gap:12px;padding-right:12px}
 }
-.public-piles{display:flex;align-items:center;gap:8px;flex:none}
-.zone-pile{width:52px;height:54px;min-width:52px;display:flex;flex-direction:column;justify-content:space-between;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:10px;letter-spacing:.06em}
+.public-piles{display:grid;grid-template-columns:repeat(2,52px);gap:6px;flex:none}
+.zone-pile{width:52px;height:42px;min-width:52px;display:flex;flex-direction:column;justify-content:space-between;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:10px;letter-spacing:.06em}
 .zone-pile b{font-size:14px;text-align:right}
 .zone-inspection,.card-inspector{position:fixed;z-index:40;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(920px,90vw);max-height:82vh;overflow:auto;padding:22px 26px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 20px 70px rgba(23,43,58,.32)}
 .zone-inspection h2,.card-inspector h2{margin:0 40px 16px 0;font:600 1.6rem 'Cormorant Garamond',Georgia,serif}
 .zone-inspection-cards{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;max-height:64vh;overflow:auto}
 .zone-inspection-close,.inspector-close{position:absolute;right:12px;top:12px;width:38px;height:38px;border:1px solid var(--border);border-radius:6px;background:var(--surface-soft);font-size:24px}
-.inspector-face{width:min(440px,78vw);min-height:480px;padding:22px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(150deg,#fff,#eaf2fa);box-shadow:0 8px 24px rgba(23,43,58,.16)}
-.inspector-face h2{margin-top:30px;font-size:2.2rem}
+.inspector-face{position:relative;width:100%;min-height:360px;padding:22px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(150deg,#fff,#eaf2fa);box-shadow:0 8px 24px rgba(23,43,58,.16)}
+.inspector-face h3{margin:10px 26px 12px 0;font:600 2rem/1.1 Georgia,serif}
 .inspector-face p{font-size:16px;line-height:1.5}
 .inspector-type,.inspector-face small{color:var(--text-muted)}
-.card .card-rules{display:block;max-height:3.6em;overflow:hidden;margin-top:5px;font-size:10px;font-weight:500;line-height:1.25;text-align:left}
+.card .card-rules{display:block;max-height:none;overflow:hidden;margin-top:5px;font-size:10px;font-weight:500;line-height:1.25;text-align:left}
 .card-power-change,.effective-power{font-weight:800}
 .card-power-change.reduced,.effective-power.reduced{color:#b4232e}
 .card-power-change.increased,.effective-power.increased{color:#188348}
@@ -220,7 +220,7 @@ html,body{background:var(--canvas);color:var(--text)}
 .damage small{display:inline;font:500 .65rem Inter,sans-serif}
 .card.selected{transform:none!important;outline:2px solid var(--accent);outline-offset:2px}
 .card.payment-candidate{border-color:#9b6a25;cursor:pointer}
-.card.payment-selected{outline:3px solid #9b6a25;outline-offset:2px;box-shadow:0 0 0 5px rgba(155,106,37,.18)}
+.card.payment-selected{outline:none;border-color:var(--accent);box-shadow:inset 0 0 0 4px var(--accent);background:#d9edf9}
 .payment-sources{font-size:14px;line-height:1.35}
 .payment-rule-note{display:block;color:#8b2b31;font-size:13px;line-height:1.35}
 .zone-pile:hover{border-color:var(--accent);outline:2px solid rgba(35,93,136,.16)}
@@ -228,3 +228,36 @@ html,body{background:var(--canvas);color:var(--text)}
 .phase-controls button{margin:0;min-width:100px}
 .result-overlay{gap:12px}
 @media(max-width:860px){.event-log{display:none}.choice-panel{left:2vw;right:2vw;width:auto;bottom:var(--footer-height,112px)}.table{padding-right:3vw}.bottom-bar{padding-right:2vw}.public-piles{gap:3px}.zone-pile{width:42px;min-width:42px}}
+
+/* Playtest adjustments: independent zones, compact text faces, and accessible inspection. */
+.card:before{content:none}
+.card small{margin-top:3px}
+.card strong{padding-right:18px;max-width:none}
+.card .card-rules{flex:1;min-height:0;line-height:1.3}
+.payment-marker{position:absolute;left:4px;right:4px;bottom:4px;padding:3px;background:var(--accent);color:white;font-size:10px;font-weight:700;text-align:center}
+.card.payment-selected{padding-bottom:28px}
+.field-row .card.payment-selected{padding-top:3px;padding-bottom:14px}
+.field-row .payment-marker{font-size:8px;padding:1px;white-space:nowrap}
+.selected-preview:has(.payment-draft){max-height:calc(var(--footer-height) - 16px)}
+.selected-preview .payment-draft{min-height:0;overflow:auto}
+.own-zones,.opponent-zones{left:180px;right:auto}
+.own-zones{width:210px}
+.opponent-zones{right:0}
+.hand-zone{left:410px;right:0}
+.hand-fan{padding-left:4px;padding-right:4px}
+.hand-fan .card{width:164px;height:100%;padding:8px;gap:3px}
+.hand-fan .card strong{font-size:16px;line-height:1.05}
+.hand-fan .card small{font-size:10px}
+.player-info{min-width:170px}
+.card-inspector{width:min(880px,94vw);max-width:94vw}
+.inspector-header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:16px}
+.inspector-header h2{margin:0}
+.inspector-header .inspector-close{position:static;flex:none}
+.inspector-columns{display:grid;grid-template-columns:minmax(220px,1fr) minmax(240px,1fr);gap:24px}
+.inspector-details{font-size:16px;line-height:1.5}
+.log-header{flex:none;line-height:1.5;border-bottom:1px solid var(--border);padding-bottom:10px}
+.log-header strong{color:var(--metal);font-size:12px;letter-spacing:.1em}
+.phase-controls{flex-wrap:wrap;align-content:center}
+#app.log-hidden{--activity-width:0px}
+@media(max-width:1100px){.own-zones,.opponent-zones{left:140px}.player-info{min-width:130px;font-size:12px}.hand-zone{left:360px}.phase-controls button{min-width:80px;padding:6px}.phase-controls{gap:6px}.seat-label{flex-basis:100%;text-align:right}}
+@media(max-width:600px){.inspector-columns{grid-template-columns:1fr}}

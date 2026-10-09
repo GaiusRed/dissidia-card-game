@@ -13,7 +13,7 @@ export interface TableLayout {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-/** Shared desktop geometry for HTML controls and the Phaser table backdrop. */
+/** Viewport geometry for the table and its controls. */
 export function computeTableLayout(width: number, height: number): TableLayout {
   const viewportWidth = Math.max(0, width);
   const viewportHeight = Math.max(0, height);
@@ -21,7 +21,7 @@ export function computeTableLayout(width: number, height: number): TableLayout {
   const footerHeight = Math.min(viewportHeight - headerHeight, clamp(viewportHeight * 0.145, 124, 156));
   const tableHeight = Math.max(0, viewportHeight - headerHeight - footerHeight);
   const opponentHeight = Math.min(tableHeight, clamp(tableHeight * 0.13, 72, 100));
-  const currentHeight = Math.min(Math.max(0, tableHeight - opponentHeight), clamp(tableHeight * 0.185, 102, 142));
+  const currentHeight = Math.min(Math.max(0, tableHeight - opponentHeight), clamp(tableHeight * 0.22, 164, 180));
   const fieldHeight = Math.max(0, tableHeight - opponentHeight - currentHeight);
   const header = { x: 0, y: 0, width: viewportWidth, height: headerHeight };
   const opponent = { x: 0, y: header.y + header.height, width: viewportWidth, height: opponentHeight };
@@ -31,7 +31,7 @@ export function computeTableLayout(width: number, height: number): TableLayout {
   const progress = { x: viewportWidth * 0.55, y: viewportHeight - footerHeight,
     width: viewportWidth - viewportWidth * 0.55, height: progressHeight };
   const choices = { x: 0, y: progress.y, width: viewportWidth - progress.width, height: progressHeight };
-  const handHeight = Math.min(currentHeight + 30, currentHeight + fieldHeight * 0.12);
+  const handHeight = currentHeight;
   const hand = { x: viewportWidth * (viewportWidth < 1600 ? 0.27 : 0.22), y: current.y + current.height - handHeight,
     width: viewportWidth * 0.66, height: handHeight };
   const inset = Math.min(16, viewportWidth / 2);
@@ -39,7 +39,7 @@ export function computeTableLayout(width: number, height: number): TableLayout {
   const stack = { x: viewportWidth - inset - railWidth, y: field.y + field.height * 0.2,
     width: railWidth, height: field.height * 0.6 };
   const fieldTopInset = Math.min(field.height, 26);
-  const fieldBottomInset = Math.min(field.height - fieldTopInset, viewportWidth >= 1600 ? 68 : 32);
+  const fieldBottomInset = Math.min(field.height - fieldTopInset, 8);
   const rowHeight = Math.max(0, (field.height - fieldTopInset - fieldBottomInset) / 4);
   const rowWidth = Math.max(0, stack.x - inset - 12);
   const makeRow = (index: number): Rect => ({ x: inset, y: field.y + fieldTopInset + rowHeight * index,

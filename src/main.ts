@@ -6,7 +6,7 @@ import { LocalHost } from './host/local-host';
 import { registerOffline, type OfflineStatus } from './client/offline';
 import { homeMenu } from './client/menu';
 import { MatchController } from './client/match-controller';
-import { chooseSmartPriorityAction, type SmartPriorityReason } from './client/priority-policy';
+import { chooseSmartPriorityAction, type SmartPriorityReason, type EndTurnRequest } from './client/priority-policy';
 import { computeTableLayout } from './client/table/layout';
 import { applyEventMotion, eventMotionMarkers, type EventMotionMarker } from './client/table/animation';
 import { beginHandGesture, cancelHandGesture, endHandGesture, moveHandGesture, type HandGesture } from './client/table/gestures';
@@ -16,7 +16,7 @@ import { renderPaymentPanel } from './client/ui/payment-panel';
 import { cinderCompany, tidalAssembly } from './content/decks';
 import { addEditorCard, changeEditorCommander, createDeckEditor, editorValidation, removeEditorCard } from './client/deck-editor';
 import { loadDecks, saveDeck, type SavedDeck } from './storage/decks';
-import type { DeckList, Element, Intent, ObjectId, Payment, PaymentOffer, Seat } from './rules/types';
+import type { CardDefinition, DeckList, Element, Intent, ObjectId, Payment, PaymentOffer, Seat } from './rules/types';
 import type { MatchView } from './host/protocol';
 
 const host = new LocalHost();
@@ -34,7 +34,7 @@ function syncTableLayout(): void {
     root.style.setProperty('--choice-height', `${layout.choices.height}px`);
     root.style.setProperty('--choice-width', `${layout.choices.width}px`);
     root.style.setProperty('--field-top-inset', `${Math.min(layout.field.height, 26)}px`);
-    root.style.setProperty('--field-bottom-inset', `${window.innerWidth >= 1600 ? 68 : 32}px`);
+    root.style.setProperty('--field-bottom-inset', '8px');
 }
 syncTableLayout();
 window.addEventListener('resize', syncTableLayout);
@@ -58,6 +58,10 @@ let suppressCardClickUntil = 0;
 const handOrders = new Map<Seat, ObjectId[]>();
 const automaticEventIds = new Set<string>();
 let autoScheduledKey: string | null = null;
+let endTurnRequest: EndTurnRequest | null = null;
+let logVisible = true;
+let logScrollTop = 0;
+let logFollowing = true;
 function restorePriorityHolds(): Record<Seat, boolean> {
   try {
     const value = JSON.parse(localStorage.getItem('dissidia-priority-holds') ?? '{}') as Record<string, unknown>;
@@ -177,6 +181,12 @@ function nameOf(state: MatchView, instance: string): string {
   const card = state.cards[instance]!;
   return opusPh[card.card]?.name ?? (card.card === 'HIDDEN' ? 'Card back' : card.card);
 }
+function cardRulesText(card: CardDefinition | null | undefined): string {
+  return card?.text.replace(/(?:Generic\.\s*)?No abilities\.\s*/gi, '').trim() ?? '';
+}
+function phaseName(phase: string): string {
+  return ({ main1: 'Main 1', main2: 'Main 2', attack: 'Attack', end: 'End', setup: 'Setup', active: 'Active', draw: 'Draw' } as Record<string, string>)[phase] ?? phase;
+}
 function eventText(event: import('./rules/types').RuleEvent): string {
   const data = event.data && typeof event.data === 'object' && !Array.isArray(event.data) ? event.data as Record<string, unknown> : {};
   const actor = typeof data.seat === 'number' ? `Player ${data.seat + 1}` : 'The game';
@@ -186,9 +196,9 @@ function eventText(event: import('./rules/types').RuleEvent): string {
     const card = Object.values(view.cards).find(item => item.object === id);
     return card ? nameOf(view, card.instance) : 'a card';
   };
-  if (event.type === 'priority.passed') return `${actor} passed priority${automaticEventIds.has(event.id) ? ' [Smart Priority]' : ''}.`;
+  if (event.type === 'priority.passed') return `${actor} passed priority${automaticEventIds.has(event.id) ? ' automatically' : ''}.`;
   if (event.type === 'combat.block-declined') return automaticEventIds.has(event.id) ? `${actor} had no legal blocker; combat proceeds.` : `${actor} declined to block.`;
-  if (event.type === 'phase.started') return `Turn ${String(data.turn)} | Player ${Number(data.active) + 1} | ${String(data.phase)} Phase.`;
+  if (event.type === 'phase.started') return `Turn ${String(data.turn)} | Player ${Number(data.active) + 1} | ${phaseName(String(data.phase))} Phase.`;
   if (event.type === 'character.cast') return `${actor} played ${opusPh[String(data.card)]?.name ?? data.card}.`;
   if (event.type === 'summon.cast') return `${actor} cast ${opusPh[String(data.card)]?.name ?? data.card}.`;
   if (event.type === 'summon.resolved') return `${opusPh[String(data.card)]?.name ?? data.card} resolved.`;
@@ -264,6 +274,7 @@ function makePayment(state: MatchView, seat: Seat, source: ObjectId, cost: numbe
 }
 async function command(seat: Seat, intent: Intent, view: MatchView, autoReason: SmartPriorityReason | null = null): Promise<void> {
   if (commandPending) return;
+  if (endTurnRequest && intent.kind !== 'pass') endTurnRequest = null;
   if (!autoReason) { autoBurstCount = 0; autoBudgetPaused = false; autoScheduledKey = null; }
   commandPending = true;
   root.inert = true;
@@ -283,7 +294,7 @@ async function command(seat: Seat, intent: Intent, view: MatchView, autoReason: 
       actionDraft = null; paymentChoices = []; selectedSpecialDiscard = null;
       matchController?.clearDraft();
       inspectedSeat = reply.state.choice?.seat ?? reply.state.priority ?? reply.state.active;
-    } else pendingEventMotion = [];
+    } else { pendingEventMotion = []; endTurnRequest = null; }
   } finally {
     commandPending = false;
     root.inert = false;
@@ -293,6 +304,7 @@ async function command(seat: Seat, intent: Intent, view: MatchView, autoReason: 
   }
 }
 function scheduleSmartPriority(view: MatchView): void {
+  if (endTurnRequest && (endTurnRequest.generation !== view.generation || endTurnRequest.turn !== view.turn || view.choice || view.result || priorityHolds[endTurnRequest.seat] || screen !== 'home' || enlargedObject || openPublicZone || actionDraft || handPointer)) endTurnRequest = null;
   const paused = screen !== 'home' || enlargedObject !== null || openPublicZone !== null || actionDraft !== null || handPointer !== null || commandPending;
   if (paused) { autoScheduledKey = null; return; }
   if (autoBudgetPaused) return;
@@ -304,7 +316,7 @@ function scheduleSmartPriority(view: MatchView): void {
   }
   const seat = view.priority;
   if (seat === null) { autoScheduledKey = null; return; }
-  const decision = chooseSmartPriorityAction(view, priorityHolds[seat]);
+  const decision = chooseSmartPriorityAction(view, priorityHolds[seat], false, endTurnRequest);
   if (!decision) { autoScheduledKey = null; return; }
   const key = `${view.generation}:${view.seq}:${seat}:${decision.reason}`;
   if (autoScheduledKey === key) return;
@@ -313,8 +325,8 @@ function scheduleSmartPriority(view: MatchView): void {
     if (commandPending) return;
     let latest: MatchView;
     try { latest = host.view(seat); } catch { return; }
-    const current = chooseSmartPriorityAction(latest, priorityHolds[seat], screen !== 'home' || enlargedObject !== null || openPublicZone !== null || actionDraft !== null || handPointer !== null || commandPending);
-    if (!current || latest.generation !== view.generation || latest.seq !== view.seq || latest.priority !== seat) return;
+    const current = chooseSmartPriorityAction(latest, priorityHolds[seat], screen !== 'home' || enlargedObject !== null || openPublicZone !== null || actionDraft !== null || handPointer !== null || commandPending, endTurnRequest);
+    if (autoScheduledKey !== key || !current || latest.generation !== view.generation || latest.seq !== view.seq || latest.priority !== seat) return;
     void command(seat, current.intent, latest, current.reason);
   }, 180);
 }
@@ -447,7 +459,7 @@ function renderDeckEditor(): void {
   const commanderOptions = Object.values(opusPh).filter(card => card.type === 'Forward' && card.rarity === 'L');
   const errors = editorValidation(editorDeck);
   const inspectCard = editorInspection ? opusPh[editorInspection] : undefined;
-  const inspectionText = inspectCard?.abilities.map(ability => ability.text.trim()).filter(Boolean).join(' ') ?? '';
+  const inspectionText = cardRulesText(inspectCard);
   root.innerHTML = `<section class="editor-page"><header class="editor-header"><button class="top-button" id="editor-back">← Menu</button><div><p class="eyebrow">COMMANDER DUEL · OPUS PLACEHOLDER</p><h2>Deck editor</h2></div><span class="deck-count">${editorDeck.main.length} / 19</span></header><div class="editor-toolbar"><label>PLAYER <select id="editor-seat"><option value="0" ${editorSeat === 0 ? 'selected' : ''}>1</option><option value="1" ${editorSeat === 1 ? 'selected' : ''}>2</option></select></label><label>COMMANDER <select id="editor-commander">${commanderOptions.map(card => `<option value="${card.number}" ${editorDeck.commander === card.number ? 'selected' : ''}>${card.name} · ${card.elements.join('/')}</option>`).join('')}</select></label><button class="primary small" id="save-deck" ${errors.length ? 'disabled' : ''}>Save for Player ${editorSeat + 1}</button></div><p class="editor-error" role="status">${editorError || errors.map(error => error.message).join(' ')}</p><div class="editor-toolbar editor-filters"><label>SEARCH <input id="editor-search" value="${editorQuery.replaceAll('"', '&quot;')}" placeholder="Card name or number" /></label><label>TYPE <select id="editor-type"><option value="all">All types</option><option>Forward</option><option>Backup</option><option>Summon</option></select></label><label>ELEMENT <select id="editor-element"><option value="all">All elements</option><option>Fire</option><option>Ice</option><option>Wind</option><option>Earth</option><option>Lightning</option><option>Water</option><option>Light</option><option>Dark</option></select></label></div><div class="editor-columns"><section><h3>Main deck <small>${editorDeck.main.length}/19</small></h3><div class="editor-list">${editorDeck.main.map(number => { const card = opusPh[number]!; return `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong class="editor-inspect" tabindex="0" role="button" aria-label="Inspect ${card.name}">${card.name}</strong><small>${number} · ${card.type} · ${card.cost}</small><button data-remove="${number}" aria-label="Remove ${card.name}">−</button></div>`; }).join('') || '<p class="subtle">Add cards from the catalog.</p>'}</div></section><section><h3>Card catalog <small>${pool.length} matching cards</small></h3><div class="editor-list">${pool.map(card => `<div class="editor-row"><span class="element-mark">${card.elements[0]}</span><strong class="editor-inspect" tabindex="0" role="button" aria-label="Inspect ${card.name}">${card.name}</strong><small>${card.number} · ${card.type} · ${card.cost}</small><button data-add="${card.number}" aria-label="Add ${card.name}" ${editorDeck.main.includes(card.number) || editorDeck.main.length >= 19 ? 'disabled' : ''}>+</button></div>`).join('')}</div></section></div>${inspectCard ? `<aside class="editor-inspection" role="region" aria-label="Card inspection"><div><p class="eyebrow">${inspectCard.number} · ${inspectCard.type} · ${inspectCard.elements.join(' / ')} · COST ${inspectCard.cost}${inspectCard.power === null ? '' : ` · ${inspectCard.power} POWER`}</p><h3>${inspectCard.name}</h3><p>${inspectionText}</p><small>${inspectCard.jobs.join(' · ')}${inspectCard.keywords.length ? ` · ${inspectCard.keywords.join(' · ')}` : ''}</small></div><button class="top-button" id="close-editor-inspection" aria-label="Close card inspection">Close</button></aside>` : ''}</section>`;
   const typeControl = root.querySelector<HTMLSelectElement>('#editor-type');
   if (typeControl) typeControl.value = editorType;
@@ -543,14 +555,21 @@ function cardTile(state: MatchView, instance: string, selectable = true, playabl
   const paymentKind = paymentOffer?.backupOptions.includes(card.object) ? 'backup'
     : paymentOffer?.discardOptions.includes(card.object) ? 'discard' : null;
   const paymentSelected = paymentChoices.some(choice => choice.object === card.object);
-  const rulesText = def?.abilities.map(ability => ability.text.trim()).filter(Boolean).join(' ');
+  const rulesText = cardRulesText(def);
   const powerDelta = typeof def?.power === 'number' && typeof presentation?.power === 'number' ? presentation.power - def.power : 0;
   return `<button class="card ${card.dull ? 'dull' : ''} ${selected ? 'selected' : ''} ${playable ? 'playable' : ''} ${targetable ? 'targetable' : ''} ${paymentKind ? 'payment-candidate' : ''} ${paymentSelected ? 'payment-selected' : ''}" data-card="${card.object}" data-table-instance="${instance}" data-zone="${card.zone}" ${paymentKind ? `data-payment-option="${paymentKind}"` : ''} data-testid="card-${card.object}" aria-label="${nameOf(state, instance)}${targetable ? ', legal target' : ''}${paymentKind ? `, ${paymentKind} for CP` : ''}" ${selectable ? '' : 'disabled'}>
     <span class="card-cost">${costOverride ?? def?.cost ?? '·'}</span><strong>${nameOf(state, instance)}</strong><small>${def?.type ?? 'Card back'} · ${presentation?.power !== null && presentation?.power !== undefined ? `${presentation.power} power` : def?.elements.join(' / ') ?? ''}</small>
     ${rulesText ? `<span class="card-rules">${rulesText}</span>` : ''}${powerDelta ? `<span class="card-power-change ${powerDelta < 0 ? 'reduced' : 'increased'}">${powerDelta > 0 ? '+' : ''}${powerDelta}</span>` : ''}
-    <span class="card-number">${card.card}</span></button>`;
+    ${paymentSelected ? `<span class="payment-marker" aria-label="Selected for payment">${card.zone === 'field' ? 'Pay CP' : 'Selected for payment'}</span>` : ''}</button>`;
 }
 function render(): void {
+  if (screen !== 'home' || enlargedObject || openPublicZone || actionDraft || handPointer) endTurnRequest = null;
+  const previousLog = root.querySelector<HTMLElement>('.event-log [role="log"]');
+  if (previousLog) {
+    logScrollTop = previousLog.scrollTop;
+    logFollowing = previousLog.scrollHeight - previousLog.clientHeight - previousLog.scrollTop < 24;
+  }
+  root.classList.toggle('log-hidden', !logVisible);
   root.classList.toggle('targeting-active', castingSource !== null || abilityDraft !== null);
   if (handPointer) {
     let current: MatchView | null = null;
@@ -654,13 +673,18 @@ function render(): void {
   const top = state.zones[other];
   const selected = selectedObject ? findObject(state, selectedObject) : null;
   const selectedDef = selected ? opusPh[selected.card] : null;
-  const selectedRulesText = selectedDef?.abilities.map(ability => ability.text.trim()).filter(Boolean).join(' ') ?? '';
-  const groupedLog: { event: import('./rules/types').RuleEvent; text: string; count: number }[] = [];
-  for (const event of view.log.slice().reverse()) {
+  const selectedRulesText = cardRulesText(selectedDef);
+  const groupedLog: { event: import('./rules/types').RuleEvent; text: string; count: number; autoSeats: number[] }[] = [];
+  for (const event of view.log) {
     const text = eventText(event);
     const previous = groupedLog.at(-1);
-    if (previous?.text === text) previous.count += 1;
-    else groupedLog.push({ event, text, count: 1 });
+    const automaticPass = event.type === 'priority.passed' && automaticEventIds.has(event.id);
+    const seat = automaticPass ? Number((event.data as Record<string, unknown>).seat) + 1 : null;
+    if (previous && (previous.text === text || (automaticPass && previous.autoSeats.length > 0))) {
+      previous.count += 1;
+      if (seat !== null && !previous.autoSeats.includes(seat)) previous.autoSeats.push(seat);
+      if (automaticPass) previous.text = `${previous.autoSeats.map(value => `Player ${value}`).join(' and ')} passed priority automatically.`;
+    } else groupedLog.push({ event, text, count: 1, autoSeats: seat === null ? [] : [seat] });
   }
   const logItems = groupedLog.map(({ event, text, count }) => `<li data-rule-event="${event.id}">${text}${count > 1 ? ` × ${count}` : ''}</li>`).join('');
   const stackEntries = state.stack.map((item, index) => {
@@ -688,7 +712,7 @@ function render(): void {
   const enlargedCard = enlargedObject ? findObject(state, enlargedObject) : null;
   const enlargedDefinition = enlargedCard ? opusPh[enlargedCard.card] : null;
   const enlargedPresentation = enlargedCard ? state.presentations[enlargedCard.object] : null;
-  const inspectorDialog = enlargedCard && enlargedDefinition ? `<section class="card-inspector" role="dialog" aria-modal="true" aria-label="Inspect ${enlargedDefinition.name}"><button class="inspector-close" data-close-inspector aria-label="Close card inspection">×</button><article class="inspector-face"><span class="card-cost">${enlargedDefinition.cost}</span><h2>${enlargedDefinition.name}</h2><p class="inspector-type">${enlargedDefinition.type} · ${enlargedDefinition.elements.join(' / ')}</p>${enlargedDefinition.abilities.map(ability => ability.text.trim()).filter(Boolean).map(text => `<p>${text}</p>`).join('')}<p class="inspector-power">${typeof enlargedDefinition.power === 'number' ? `Printed ${enlargedDefinition.power} · Effective ${enlargedPresentation?.power ?? enlargedDefinition.power}` : ''}</p><small>${enlargedDefinition.number}</small></article></section>` : '';
+  const inspectorDialog = enlargedCard && enlargedDefinition ? `<section class="card-inspector" role="dialog" aria-modal="true" aria-label="Inspect ${enlargedDefinition.name}"><header class="inspector-header"><h2>${enlargedDefinition.name}</h2><button class="inspector-close" data-close-inspector aria-label="Close card inspection">&times;</button></header><div class="inspector-columns"><article class="inspector-face" aria-label="Card face"><span class="card-cost">${enlargedDefinition.cost}</span><h3>${enlargedDefinition.name}</h3><p>${enlargedDefinition.type} | ${enlargedDefinition.elements.join(' / ')}</p>${cardRulesText(enlargedDefinition) ? `<p>${cardRulesText(enlargedDefinition)}</p>` : ''}</article><article class="inspector-details"><p>Cost ${enlargedDefinition.cost} CP | ${enlargedDefinition.type} | ${enlargedDefinition.elements.join(' / ')}</p><p>${enlargedDefinition.number} | ${enlargedDefinition.jobs.join(' / ')}</p>${cardRulesText(enlargedDefinition) ? `<p>${cardRulesText(enlargedDefinition)}</p>` : ''}<p>${typeof enlargedDefinition.power === 'number' ? `Printed ${enlargedDefinition.power} | <strong class="effective-power ${(enlargedPresentation?.power ?? enlargedDefinition.power) < enlargedDefinition.power ? 'reduced' : (enlargedPresentation?.power ?? enlargedDefinition.power) > enlargedDefinition.power ? 'increased' : ''}">Effective ${enlargedPresentation?.power ?? enlargedDefinition.power}</strong>` : ''}</p><p>Owner Player ${enlargedCard.owner + 1} | Controller Player ${enlargedCard.controller + 1} | ${enlargedCard.zone}</p></article></div></section>` : '';
   const commander = state.cards[state.commanders[bottomSeat].instance]!;
   const opponentCommander = state.cards[state.commanders[other].instance]!;
   const playableObjects = new Set(actionView.castAccess.filter(access => access.canDeclare).map(access => access.source));
@@ -787,17 +811,24 @@ function render(): void {
   const partyControl = state.phase === 'attack' && state.active === bottomSeat && state.priority === bottomSeat && !state.combat && partyDraft.length > 0
     ? `<button class="primary" id="attack-party">Attack with ${partyDraft.length} Forward${partyDraft.length === 1 ? '' : 's'}</button>`
     : '';
-  root.innerHTML = `<header class="topbar"><a class="brand" href="#"><span class="brand-mark">D</span> DISSIDIA <small>PLAYTEST</small></a><div class="match-meta"><span>TURN ${state.turn || 'SETUP'}</span><b>·</b><span>${state.phase.toUpperCase()}</span></div><div class="top-actions"><button class="top-button" id="inspect">Inspect Player ${other + 1}</button><button class="top-button" id="concede">Concede</button></div></header>
-    <section class="table" aria-label="Game table" data-view-seq="${state.seq}" data-generation="${state.generation}"><div class="player-row opponent"><div class="player-info"><span class="avatar blue">${other + 1}</span><div><strong>Player ${other + 1}</strong><small>${state.active === other ? 'ACTIVE PLAYER' : 'WAITING'}</small></div><span class="damage"><b>${top.damage.length}</b><small> / 7</small></span></div><div class="opponent-zones"><div class="zone-label">COMMAND ZONE</div>${opponentCommanderSlot}<div class="opponent-hand" aria-label="Player ${other + 1} hand">${Array.from({length: top.hand.length}, () => '<span class="back"></span>').join('')}</div>${zoneButtons(other)}</div></div>
+  root.innerHTML = `<header class="topbar"><a class="brand" href="#"><span class="brand-mark">D</span> DISSIDIA <small>PLAYTEST</small></a>${!logVisible ? `<div class="match-meta">Turn ${state.turn || 'Setup'} | ${phaseName(state.phase)}</div>` : ''}<div class="top-actions"><button class="top-button" id="toggle-log" aria-expanded="${logVisible}">${logVisible ? 'Hide log' : 'Show log'}</button><button class="top-button" id="inspect">Inspect Player ${other + 1}</button><button class="top-button" id="concede">Concede</button></div></header>
+    <section class="table" aria-label="Game table" data-turn="${state.turn}" data-phase="${state.phase}" data-view-seq="${state.seq}" data-generation="${state.generation}"><div class="player-row opponent"><div class="player-info"><span class="avatar blue">${other + 1}</span><div><strong>Player ${other + 1}</strong><small>${state.active === other ? 'ACTIVE PLAYER' : 'WAITING'}</small></div><span class="damage"><b>${top.damage.length}</b><small> / 7</small></span></div><div class="opponent-zones"><div class="zone-label">COMMAND ZONE</div>${opponentCommanderSlot}<div class="opponent-hand" aria-label="Player ${other + 1} hand">${Array.from({length: top.hand.length}, () => '<span class="back"></span>').join('')}</div>${zoneButtons(other)}</div></div>
     <div class="center-table" id="battlefield-drop"><div class="center-caption">${state.stack.length ? `STACK · ${state.stack.length}` : 'BATTLEFIELD'}</div><div class="battlefield" aria-label="Battlefield">${fieldRows}</div><div class="stack-row">${state.stackCards.map(instance => { const card = state.cards[instance]!; return cardTile(state, instance, true, false, legalDraftTarget(state, card.object)); }).join('')}</div></div>
     <div class="player-row current" data-seat="${bottomSeat}"><div class="player-info"><span class="avatar red">${bottomSeat + 1}</span><div><strong>Player ${bottomSeat + 1}</strong><small>${state.priority === bottomSeat ? 'YOUR PRIORITY' : `PLAYER ${state.active + 1} TURN`}</small></div><span class="damage"><b>${bottom.damage.length}</b><small> / 7</small></span></div><div class="own-zones"><div class="zone-label">COMMAND ZONE</div>${commanderSlot}${zoneButtons(bottomSeat)}</div><div class="hand-zone"><div class="zone-label">PLAYER ${bottomSeat + 1} · HAND <span>${bottom.hand.length}</span></div><div class="other-zone-tray" aria-label="Playable cards from other zones">${commanderTray}</div><div class="hand-fan${bottom.hand.length <= 7 ? ' hand-fan-spread' : ''}" data-seat="${bottomSeat}" aria-label="Player ${bottomSeat + 1} hand">${orderedHand(bottomSeat, bottom.hand).map(instance => { const card = state.cards[instance]!; return cardTile(state, instance, true, playableObjects.has(card.object) && !!makePayment(state, bottomSeat, card.object, opusPh[card.card]!.cost), false, undefined, paymentOffer); }).join('')}</div></div></div></section>
     ${breakTargets}${prompt}
-    <aside class="event-log" role="region" aria-label="Game activity">${stackEntries.length ? `<section class="stack-details" role="region" aria-label="Stack details"><div class="eyebrow">STACK DETAILS</div><ol aria-label="Stack entries">${stackEntries.join('')}</ol></section>` : ''}<div class="eyebrow">MATCH LOG · ${state.phase.toUpperCase()}</div><ul role="log" aria-label="Game log">${logItems || '<li>Accepted actions will appear here.</li>'}</ul></aside>${publicZoneDialog}${inspectorDialog}
-    <footer class="bottom-bar"><div class="selection-area">${selected && selectedDef ? `<div class="selected-preview"><span class="eyebrow">${selectedDef.type} · ${selectedDef.elements.join(' / ')}</span><strong>${selectedDef.name}</strong><small class="selection-detail">${selectedRulesText}</small>${selectedActions}${paymentPanel}${castingSource || abilityDraft ? '<button class="soft small" id="cancel-draft">Cancel</button>' : ''}</div>` : `<div class="empty-selection"><span class="eyebrow">CHOICE</span><strong>${choice ? choice.reason : 'Select a card to inspect'}</strong><small>${choice ? 'Use the decision controls above to continue.' : notice || 'Cards glow when an action is available.'}</small></div>`}</div><div class="phase-controls"><span class="seat-label">DECISION · PLAYER ${(decision ?? bottomSeat) + 1}</span>${partyControl}${autoBudgetPaused ? '<button class="soft" id="continue-auto">Continue Smart Priority</button>' : ''}${!choice && state.priority === bottomSeat ? `<button class="soft" id="toggle-hold" aria-pressed="${priorityHolds[bottomSeat]}">Hold Priority: ${priorityHolds[bottomSeat] ? 'On' : 'Off'}</button><button class="primary" id="pass">Pass priority</button>` : '<button class="soft" disabled>Await decision</button>'}<button class="top-button" id="main-menu">Menu</button></div></footer>
+    ${logVisible ? `<aside class="event-log" role="region" aria-label="Game activity"><header class="log-header"><strong>MATCH LOG</strong><div>Turn ${state.turn || 'Setup'} | Player ${state.active + 1} | ${phaseName(state.phase)}</div></header>${stackEntries.length ? `<section class="stack-details" role="region" aria-label="Stack details"><div class="eyebrow">STACK DETAILS</div><ol aria-label="Stack entries">${stackEntries.join('')}</ol></section>` : ''}<ul role="log" aria-label="Game log">${logItems || '<li>Accepted actions will appear here.</li>'}</ul></aside>` : ''}${publicZoneDialog}${inspectorDialog}
+    <footer class="bottom-bar"><div class="selection-area">${selected && selectedDef ? `<div class="selected-preview"><span class="eyebrow">${selectedDef.type} · ${selectedDef.elements.join(' / ')}</span><strong>${selectedDef.name}</strong><small class="selection-detail">${selectedRulesText}</small>${selectedActions}${paymentPanel}${castingSource || abilityDraft ? '<button class="soft small" id="cancel-draft" aria-label="Cancel action">Cancel</button>' : !choice ? '<button class="soft small" id="clear-selection">Clear selection</button>' : ''}</div>` : `<div class="empty-selection"><span class="eyebrow">CHOICE</span><strong>${choice ? choice.reason : 'Select a card to inspect'}</strong><small>${choice ? 'Use the decision controls above to continue.' : notice || 'Cards glow when an action is available.'}</small></div>`}</div><div class="phase-controls"><span class="seat-label">DECISION · PLAYER ${(decision ?? bottomSeat) + 1}</span>${partyControl}${endTurnRequest ? '<button class="soft" id="cancel-end-turn">Cancel End Turn</button>' : ''}${autoBudgetPaused ? '<button class="soft" id="continue-auto">Continue Smart Priority</button>' : ''}${!choice && state.priority === bottomSeat ? `<button class="soft" id="toggle-hold" aria-pressed="${priorityHolds[bottomSeat]}">Hold Priority: ${priorityHolds[bottomSeat] ? 'On' : 'Off'}</button><button class="primary" id="pass">Pass priority</button>${state.active === bottomSeat && !state.combat && !actionDraft ? `<button class="soft" id="end-turn" ${priorityHolds[bottomSeat] ? 'disabled title="Turn off Hold Priority to use End Turn"' : ''}>End Turn</button>` : ''}` : '<button class="soft" disabled>Await decision</button>'}<button class="top-button" id="main-menu">Menu</button></div></footer>
     ${state.result ? `<div class="result-overlay"><h2>${state.result.winner === null ? 'Draw game' : `Player ${state.result.winner + 1} wins`}</h2><p>${state.result.reason === 'damage' ? 'Seven damage' : state.result.reason}</p><button class="primary" id="new-match">New match</button><button class="top-button" id="result-export-save">Export save</button><button class="soft" id="result-menu">Return to menu</button></div>` : ''}<div class="toast" role="status">${notice || host.persistenceError || ''}${host.persistenceError ? '<button class="soft small" id="retry-save">Retry save</button>' : ''}</div>`;
 
   const logScroller = root.querySelector<HTMLElement>('.event-log [role="log"]');
-  if (logScroller) logScroller.scrollTop = logScroller.scrollHeight;
+  if (logScroller) logScroller.scrollTop = logFollowing ? logScroller.scrollHeight : logScrollTop;
+  root.querySelector('#toggle-log')?.addEventListener('click', () => { logVisible = !logVisible; render(); });
+  root.querySelector('#clear-selection')?.addEventListener('click', () => { selectedObject = null; render(); });
+  root.querySelector('#cancel-end-turn')?.addEventListener('click', () => { endTurnRequest = null; autoScheduledKey = null; render(); });
+  root.querySelector('#end-turn')?.addEventListener('click', () => {
+    endTurnRequest = endTurnRequest ? null : { generation: state.generation, turn: state.turn, seat: bottomSeat };
+    selectedObject = null; autoScheduledKey = null; autoBurstCount = 0; autoBudgetPaused = false; render();
+  });
 
   if (selected && selectedDef) {
     const status = [selected.dull ? 'Dull' : '', selected.frozen ? 'Freeze' : '', selected.damage ? `${selected.damage} damage` : '']
@@ -814,8 +845,9 @@ function render(): void {
       `<small class="card-inspection-meta">Owner Player ${selected.owner + 1} · Controller Player ${selected.controller + 1} · ${selected.zone} · ${status}${keywords ? ` · ${keywords}` : ''}${power}${commanderTax}</small>`);
   }
   root.querySelector('.top-actions')?.insertAdjacentHTML('beforeend', '<button class="top-button" id="export-save">Export save</button><label class="top-button import-button" for="import-save">Import</label><input id="import-save" type="file" accept="application/json,.json" hidden />');
-  root.querySelector('#inspect')?.addEventListener('click', () => { inspectedSeat = other; matchController?.inspectSeat(other); render(); });
+  root.querySelector('#inspect')?.addEventListener('click', () => { endTurnRequest = null; inspectedSeat = other; matchController?.inspectSeat(other); render(); });
   root.querySelector('#toggle-hold')?.addEventListener('click', () => {
+    endTurnRequest = null;
     priorityHolds[bottomSeat] = !priorityHolds[bottomSeat];
     try { localStorage.setItem('dissidia-priority-holds', JSON.stringify(priorityHolds)); } catch { /* Hold remains available until reload when storage is disabled. */ }
     autoScheduledKey = null;
@@ -879,7 +911,7 @@ function render(): void {
   root.querySelector('#confirm-summon')?.addEventListener('click', () => castingSource && castSummon(state, bottomSeat, castingSource, targetSelection));
   root.querySelector('#confirm-ability')?.addEventListener('click', () => sendAbility(state, bottomSeat, targetSelection));
   root.querySelector('#cancel-draft')?.addEventListener('click', () => {
-    castingSource = null; abilityDraft = null; actionDraft = null; paymentChoices = []; selectedSpecialDiscard = null; targetCursor = null;
+    selectedObject = null; castingSource = null; abilityDraft = null; actionDraft = null; paymentChoices = []; selectedSpecialDiscard = null; targetCursor = null;
     targetSelection = []; selectedMode = null; matchController?.clearDraft(); notice = ''; render();
   });
   root.querySelectorAll<HTMLElement>('[data-mode]').forEach(button => button.addEventListener('click', () => {
@@ -917,6 +949,7 @@ function render(): void {
   root.querySelector('#attack-card')?.addEventListener('click', () => selected && command(bottomSeat, { kind: 'attack', members: [selected.object] }, state));
   root.querySelector('#block-card')?.addEventListener('click', () => selected && command(bottomSeat, { kind: 'block', blocker: selected.object }, state));
   root.querySelectorAll<HTMLElement>('[data-card]').forEach(button => button.addEventListener('click', () => {
+    endTurnRequest = null;
     const object = button.dataset.card!;
     if (suppressCardClick === object && Date.now() <= suppressCardClickUntil) { suppressCardClick = null; return; }
     const target = findObject(state, object);
@@ -1032,6 +1065,7 @@ function render(): void {
       cardElement.addEventListener('pointercancel', event => finishPointer(event, true));
     }
     button.addEventListener('dragstart', event => {
+      endTurnRequest = null;
       const object = button.dataset.card!;
       const card = findObject(state, object);
       if (card && (card.zone === 'hand' || card.zone === 'commander')) {

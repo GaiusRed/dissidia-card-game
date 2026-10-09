@@ -462,7 +462,7 @@ test('First Strike Forward removes its blocker through the combat controls', asy
   await page.locator('#scenario-select').selectOption('party-first-strike');
   await page.getByRole('button', { name: 'Start scenario' }).click();
   const firstStrikeForward = page.locator('[aria-label="Player 2 Forwards"] [data-card]')
-    .filter({ hasText: 'P-026R' });
+    .filter({ hasText: 'Tide Duelist' });
   await expect(firstStrikeForward).toHaveCount(1);
   await firstStrikeForward.click();
   await page.getByRole('button', { name: 'Add to attack party' }).click();
@@ -478,7 +478,7 @@ test('First Strike Forward removes its blocker through the combat controls', asy
   await page.getByRole('button', { name: 'Pass priority', exact: true }).click();
 
   await expect(page.locator('[aria-label="Player 1 Forwards"] [data-card]')).toHaveCount(0);
-  await expect(page.locator('[aria-label="Player 2 Forwards"] [data-card]').filter({ hasText: 'P-026R' })).toHaveCount(1);
+  await expect(page.locator('[aria-label="Player 2 Forwards"] [data-card]').filter({ hasText: 'Tide Duelist' })).toHaveCount(1);
   await expect(page.locator('.player-row').filter({ hasText: 'Player 1' }).locator('.damage')).toContainText('0');
 });
 

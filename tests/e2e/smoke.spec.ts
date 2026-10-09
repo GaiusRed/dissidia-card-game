@@ -12,10 +12,10 @@ test('starts a match, completes setup, and advances priority from the real contr
   await page.getByRole('button', { name: 'Take first turn' }).click();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
-  await expect(page.getByText('MAIN1', { exact: true })).toBeVisible();
+  await expect(page.locator('.table')).toHaveAttribute('data-phase', 'main1');
   await page.getByRole('button', { name: 'Pass priority' }).click();
   await page.getByRole('button', { name: 'Pass priority' }).click();
-  await expect(page.getByText('ATTACK', { exact: true })).toBeVisible();
+  await expect(page.locator('.table')).toHaveAttribute('data-phase', 'attack');
   await expect(page.getByRole('log', { name: 'Game log' })).toContainText('passed priority');
   expect(errors).toEqual([]);
 });
@@ -143,7 +143,7 @@ test('restores the exact open mulligan decision after reload', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Keep', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
   await page.getByRole('button', { name: 'Keep', exact: true }).click();
-  await expect(page.getByText('MAIN1', { exact: true })).toBeVisible();
+  await expect(page.locator('.table')).toHaveAttribute('data-phase', 'main1');
 });
 
 test('reviews a pointer-dragged playable Forward before casting it at both desktop sizes', async ({ page }) => {

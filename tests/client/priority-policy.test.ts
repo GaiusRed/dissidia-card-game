@@ -12,6 +12,17 @@ const view = (overrides: Partial<MatchView> = {}) => ({
 } as unknown as MatchView);
 
 describe('Smart priority policy', () => {
+  it('End Turn passes the requesting player with legal actions but preserves opponent responses', () => {
+    const cast = { ...view().actions[0]!, kind: 'cast' as const };
+    const request = { generation: 1, turn: 1, seat: 0 as const };
+    expect(chooseSmartPriorityAction(view({ actions: [...view().actions, cast] }), false, false, request))
+      .toEqual({ intent: { kind: 'pass' }, reason: 'end-turn' });
+    expect(chooseSmartPriorityAction(view({ priority: 1, decisionSeat: 1, actions: [...view().actions, cast] }), false, false, request)).toBeNull();
+    expect(chooseSmartPriorityAction(view({ actions: [...view().actions, cast], turn: 2 }), false, false, request)).toBeNull();
+    expect(chooseSmartPriorityAction(view({ actions: [...view().actions, cast], generation: 2 }), false, false, request)).toBeNull();
+    expect(chooseSmartPriorityAction(view(), true, false, request)).toBeNull();
+    expect(chooseSmartPriorityAction(view({ choice: {} as MatchView['choice'] }), false, false, request)).toBeNull();
+  });
   it('passes through a validated action when no legal action exists', () => {
     expect(chooseSmartPriorityAction(view(), false)).toEqual({ intent: { kind: 'pass' }, reason: 'no-action' });
   });

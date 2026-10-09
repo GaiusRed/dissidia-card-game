@@ -668,3 +668,34 @@ Remove-Item -LiteralPath @(
 - [x] Work stays inline on the current branch; committing and pushing are explicitly authorized after local acceptance.
 
 The execution record above reports verified work; the task bullets preserve the approved design detail for review. Do not infer hosted CI success from local checks.
+
+## Additional playtest adjustments — 2026-10-09
+
+The user approved these adjustments for inline execution on the existing branch.
+
+- [x] Add End Turn as a voluntary sequence of validated passes. Preserve opponent response opportunities. Cancel on opponent actions, required choices, Hold, inspection, menu, reload, or match replacement. Stop when the turn changes.
+- [x] Fit four battlefield rows without vertical scrolling. Reserve separate space for the hand, Command Zone, and a 2×2 pile grid for each seat.
+- [x] Remove the placeholder artwork gap and face numbers. Place type, power, and rules below the name. Keep full text and numbers in inspection.
+- [x] Strengthen payment selection with an inset highlight and a text marker. Retain suggested payment and require confirmation.
+- [x] Arrange inspection with a face/image column and a details column. Separate cost from Close.
+- [x] Add visible Clear selection and Cancel action controls; retain Escape.
+- [x] Put turn, active player, and readable phase names in the log header. Add Hide/Show and reclaim sidebar width when hidden.
+- [x] Render chronological log entries. Follow new events only when already at the bottom. Summarize adjacent routine passes without losing phase/action boundaries.
+- [x] Verify policy behavior, public-zone access, cancellation, inspection, log visibility, and desktop layout. Run clean install, typecheck, boundaries, unit, browser, release, and build checks. Verify npm run dev starts.
+
+Use existing rules and projections. Do not add Markdown assertions or screenshot baselines. Preserve user-owned .vscode files.
+
+
+### Adjustment execution evidence
+
+- Clean install: npm ci completed; 371 packages installed, zero reported vulnerabilities.
+- Build and all four TypeScript configurations passed. Rules boundaries passed.
+- Unit suite: 54 files and 367 tests passed with two workers. A concurrent run timed out in the filesystem boundary scan; the reduced-worker rerun passed without changing its assertions.
+- Browser suite: 21 tests passed, including complete offline duels at both desktop sizes, exported replay, End Turn, and cancellation in a held opponent window.
+- UI matrix: 168 tests passed across 1280?720 and 1920?1080, with normal and reduced motion.
+- Release lifecycle: all three tests passed, including offline Commander-choice recovery and a waiting update.
+- Visual review covered hand text, battlefield rows, inspection, pile access, and payment selection. Placeholder Summons now use the complete card text rather than the Character ability list.
+- Final payment styling: all 40 focused payment and adjustment checks passed after the full matrix. Generated reports and screenshots remain ignored.
+- npm run dev started successfully; browser checks used its local server.
+
+End Turn affects only the requesting player's passes. Opponent legal responses remain available. Required choices and player interactions cancel the request. No phase is removed from the rules engine.
